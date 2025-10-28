@@ -127,7 +127,7 @@ app.get('/test-db', (req, res) => {
     return res.status(500).json({ status: '❌ DB connection not initialized' });
   }
 
-  db.query('SELECT NOW() AS current_time', (err, results) => {
+  db.query('SELECT NOW() AS current_time', (err, results) =>  {
     if (err) {
       console.error('Database test error:', err);
       return res.status(500).json({ status: '❌ DB query failed', error: err.message });
