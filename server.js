@@ -2,6 +2,7 @@
 
 * ===============================
 * BookBuddy — Every Book Deserves a Second Reader
+* Backend with MySQL + Image Upload Support
 * ===============================
   */
 
@@ -17,8 +18,8 @@ const PORT = process.env.PORT || 10000;
 // ===============================
 // Middleware
 // ===============================
-app.use(bodyParser.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(bodyParser.json({ limit: '10mb' })); // allow base64 images
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.use(
@@ -52,16 +53,16 @@ console.log('✅ Connected to MySQL database');
 // Routes
 // ===============================
 
-// Add a new book (only title, author, price)
+// Add a new book (with optional image)
 app.post('/api/books', (req, res) => {
-const { title, author, price } = req.body;
+const { title, author, price, image } = req.body;
 
-if (!title || !author || !price) {
-return res.status(400).json({ error: 'Title, author, and price are required' });
-}
+if (!title || !author || !price)
+return res.status(400).json({ error: 'Missing required fields' });
 
-const sql = 'INSERT INTO books (title, author, price) VALUES (?, ?, ?)';
-db.query(sql, [title, author, price], (err) => {
+const sql =
+'INSERT INTO books (title, author, price, image) VALUES (?, ?, ?, ?)';
+db.query(sql, [title, author, price, image || null], (err) => {
 if (err) {
 console.error('Error adding book:', err);
 return res.status(500).json({ error: 'Failed to add book' });
@@ -70,9 +71,9 @@ res.json({ message: 'Book added successfully' });
 });
 });
 
-// Fetch all books (only return id, title, author, price)
+// Fetch all books
 app.get('/api/books', (req, res) => {
-const sql = 'SELECT id, title, author, price FROM books ORDER BY created_at DESC';
+const sql = 'SELECT id, title, author, price, image FROM books ORDER BY created_at DESC';
 db.query(sql, (err, rows) => {
 if (err) return res.status(500).json({ error: 'Could not fetch books' });
 res.json(rows);
@@ -90,50 +91,16 @@ res.json({ message: 'Book deleted successfully' });
 });
 
 // ===============================
-// Test DB Connection (Fixed)
+// Test DB Connection
 // ===============================
 app.get('/test-db', (req, res) => {
-if (!db) {
-return res.status(500).json({ status: '❌ DB connection not initialized' });
+db.query('SELECT NOW() AS server_time', (err, results) => {
+if (err) {
+console.error('Database test error:', err);
+return res.status(500).json({ status: '❌ DB query failed', error: err.message });
 }
-
-const tests = [
-{ sql: 'SELECT 1 AS ok', label: 'select_1' },
-{ sql: 'SELECT NOW() AS server_time', label: 'select_now' },
-{ sql: 'SELECT CURRENT_TIMESTAMP AS ts', label: 'select_current_timestamp' },
-];
-
-function runQuery(q) {
-return new Promise((resolve) => {
-db.query(q.sql, (err, results) => {
-resolve({
-label: q.label,
-sql: q.sql,
-err: err ? err.sqlMessage || err.message : null,
-results,
+res.json({ status: '✅ DB connected', server_time: results[0].server_time });
 });
-});
-});
-}
-
-(async () => {
-const report = [];
-for (const t of tests) {
-const r = await runQuery(t);
-report.push(r);
-if (!r.err) {
-return res.json({
-status: '✅ DB query succeeded',
-passed: r.label,
-results: r.results,
-});
-}
-}
-return res.status(500).json({
-status: '❌ All test queries failed',
-report,
-});
-})();
 });
 
 // ===============================
