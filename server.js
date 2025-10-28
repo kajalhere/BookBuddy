@@ -2,9 +2,6 @@
 // BookBuddy — Every Book Deserves a Second Reader //
 //////////////////////////////////////////////////////
 
-// ===============================
-// Import dependencies
-// ===============================
 const express = require('express');
 const bodyParser = require('body-parser');
 const path = require('path');
@@ -12,15 +9,9 @@ const mysql = require('mysql2');
 const session = require('express-session');
 const fs = require('fs');
 
-// ===============================
-// Express setup
-// ===============================
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ===============================
-// Middleware
-// ===============================
 app.use(bodyParser.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
@@ -60,14 +51,12 @@ try {
 // Routes
 // ===============================
 
-// Serve homepage
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 // ========== USER AUTH ==========
 
-// Register
 app.post('/api/register', (req, res) => {
   const { username, email, password } = req.body;
 
@@ -81,7 +70,6 @@ app.post('/api/register', (req, res) => {
   });
 });
 
-// Login
 app.post('/api/login', (req, res) => {
   const { email, password } = req.body;
   const sql = 'SELECT * FROM users WHERE email = ? AND password = ?';
@@ -94,7 +82,6 @@ app.post('/api/login', (req, res) => {
   });
 });
 
-// Logout
 app.post('/api/logout', (req, res) => {
   req.session.destroy();
   res.json({ message: 'Logged out successfully' });
@@ -102,12 +89,12 @@ app.post('/api/logout', (req, res) => {
 
 // ========== BOOKS MANAGEMENT ==========
 
-// Add Book
+// Add Book (supports optional image_url field)
 app.post('/api/books', (req, res) => {
-  const { title, author, genre, price, seller_email } = req.body;
+  const { title, author, genre, price, seller_email, image_url } = req.body;
   const sql =
-    'INSERT INTO books (title, author, genre, price, seller_email) VALUES (?, ?, ?, ?, ?)';
-  db.query(sql, [title, author, genre, price, seller_email], (err) => {
+    'INSERT INTO books (title, author, genre, price, seller_email, image_url) VALUES (?, ?, ?, ?, ?, ?)';
+  db.query(sql, [title, author, genre, price, seller_email, image_url || '/default-book.png'], (err) => {
     if (err) {
       console.error('Error adding book:', err);
       return res.status(500).json({ error: 'Failed to add book' });
@@ -116,7 +103,6 @@ app.post('/api/books', (req, res) => {
   });
 });
 
-// Fetch all books
 app.get('/api/books', (req, res) => {
   const sql = 'SELECT * FROM books ORDER BY created_at DESC';
   db.query(sql, (err, rows) => {
@@ -125,7 +111,6 @@ app.get('/api/books', (req, res) => {
   });
 });
 
-// Delete a book
 app.delete('/api/books/:id', (req, res) => {
   const sql = 'DELETE FROM books WHERE id = ?';
   db.query(sql, [req.params.id], (err) => {
@@ -135,16 +120,7 @@ app.delete('/api/books/:id', (req, res) => {
 });
 
 // ===============================
-// Fallback route
-// ===============================
-app.use((req, res) => {
-  res.status(404).sendFile(path.join(__dirname, 'public', '404.html'));
-});
-
-
-
-// ===============================
-// Test DB Connection (For Railway Debugging)
+// Test DB Connection
 // ===============================
 app.get('/test-db', (req, res) => {
   if (!db) {
@@ -163,10 +139,10 @@ app.get('/test-db', (req, res) => {
   });
 });
 
-
 // ===============================
 // Start server
 // ===============================
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
+
