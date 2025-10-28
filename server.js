@@ -2,18 +2,12 @@
 // BookBuddy — Every Book Deserves a Second Reader //
 //////////////////////////////////////////////////////
 
-// ===============================
-// Import dependencies
-// ===============================
 const express = require('express');
 const bodyParser = require('body-parser');
 const path = require('path');
 const mysql = require('mysql2');
 const session = require('express-session');
 
-// ===============================
-// Express setup
-// ===============================
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -68,6 +62,14 @@ res.sendFile(path.join(__dirname, 'public', 'buy.html'));
 
 app.get('/sell', (req, res) => {
 res.sendFile(path.join(__dirname, 'public', 'sell.html'));
+});
+
+app.get('/donate', (req, res) => {
+res.sendFile(path.join(__dirname, 'public', 'donate.html'));
+});
+
+app.get('/chat', (req, res) => {
+res.sendFile(path.join(__dirname, 'public', 'chat.html'));
 });
 
 app.get('/login', (req, res) => {
@@ -145,7 +147,7 @@ res.json({ message: 'Book deleted successfully' });
 });
 
 // ===============================
-// Fallback route (404)
+// 404 Fallback
 // ===============================
 app.use((req, res) => {
 res.status(404).sendFile(path.join(__dirname, 'public', '404.html'));
