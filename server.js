@@ -1,15 +1,20 @@
-// ===============================
-// BookBuddy — Every Book Deserves a Second Reader
-// ===============================
+//////////////////////////////////////////////////////
+// BookBuddy — Every Book Deserves a Second Reader //
+//////////////////////////////////////////////////////
 
+// ===============================
 // Import dependencies
-const express = require("express");
-const bodyParser = require("body-parser");
-const path = require("path");
-const mysql = require("mysql2/promise");
-const session = require("express-session");
-const fs = require("fs");
+// ===============================
+const express = require('express');
+const bodyParser = require('body-parser');
+const path = require('path');
+const mysql = require('mysql2');
+const session = require('express-session');
+const fs = require('fs');
 
+// ===============================
+// Express setup
+// ===============================
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -18,243 +23,130 @@ const PORT = process.env.PORT || 3000;
 // ===============================
 app.use(bodyParser.json());
 app.use(express.urlencoded({ extended: true }));
-
+app.use(express.static(path.join(__dirname, 'public')));
 app.use(
-  session({
-    secret: process.env.SESSION_SECRET || "bookbuddysecret",
-    resave: false,
-    saveUninitialized: true,
-  })
+session({
+secret: process.env.SESSION_SECRET || 'BookBuddySecretKey',
+resave: false,
+saveUninitialized: true,
+})
 );
-
-// Serve static frontend files from /public
-app.use(express.static(path.join(__dirname, "public")));
 
 // ===============================
 // Database Connection
 // ===============================
-let pool = null;
+let db;
+try {
+db = mysql.createConnection({
+host: process.env.DB_HOST,
+user: process.env.DB_USER,
+password: process.env.DB_PASSWORD,
+database: process.env.DB_NAME,
+port: process.env.DB_PORT || 3306,
+});
 
-(async () => {
-  try {
-    if (process.env.DB_HOST) {
-      pool = mysql.createPool({
-        host: process.env.DB_HOST,
-        port: process.env.DB_PORT || 3306,
-        user: process.env.DB_USER,
-        password: process.env.DB_PASSWORD,
-        database: process.env.DB_NAME,
-        waitForConnections: true,
-        connectionLimit: 10,
-        queueLimit: 0,
-      });
-
-      const conn = await pool.getConnection();
-      await conn.ping();
-      conn.release();
-      console.log("✅ Connected to MySQL database");
-    } else {
-      console.log("⚠️ No MySQL credentials found — using JSON fallback (users.json/books.json)");
-    }
-  } catch (err) {
-    console.error("❌ Database connection error:", err.message);
-  }
-})();
-
-// ===============================
-// Helper: Load/Save JSON fallback
-// ===============================
-function loadJSON(file) {
-  const filePath = path.join(__dirname, file);
-  if (!fs.existsSync(filePath)) return [];
-  return JSON.parse(fs.readFileSync(filePath, "utf8"));
+db.connect((err) => {
+if (err) {
+console.error('❌ MySQL connection failed:', err.message);
+} else {
+console.log('✅ Connected to MySQL database');
 }
-
-function saveJSON(file, data) {
-  const filePath = path.join(__dirname, file);
-  fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+});
+} catch (err) {
+console.error('⚠️ MySQL not connected — using fallback JSON storage');
 }
 
 // ===============================
-// API Routes
+// Routes
 // ===============================
 
-// --- SIGNUP ---
-app.post("/api/signup", async (req, res) => {
-  try {
-    const { username, email, password } = req.body;
-    if (!username || !email || !password)
-      return res.status(400).json({ error: "All fields required" });
-
-    if (pool) {
-      // MySQL version
-      const [existing] = await pool.query(
-        "SELECT id FROM users WHERE username = ? OR email = ?",
-        [username, email]
-      );
-      if (existing.length > 0)
-        return res.status(409).json({ error: "User already exists" });
-
-      await pool.query(
-        "INSERT INTO users (username, email, password) VALUES (?, ?, ?)",
-        [username, email, password]
-      );
-
-      res.json({ success: true, message: "Signup successful" });
-    } else {
-      // JSON fallback
-      const users = loadJSON("users.json");
-      if (users.find((u) => u.username === username || u.email === email))
-        return res.status(409).json({ error: "User already exists" });
-
-      users.push({ username, email, password });
-      saveJSON("users.json", users);
-      res.json({ success: true });
-    }
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Signup failed" });
-  }
+// Serve homepage
+app.get('/', (req, res) => {
+res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// --- LOGIN ---
-app.post("/api/login", async (req, res) => {
-  try {
-    const { usernameOrEmail, password } = req.body;
-    if (!usernameOrEmail || !password)
-      return res.status(400).json({ error: "All fields required" });
+// ========== USER AUTH ==========
 
-    if (pool) {
-      const [rows] = await pool.query(
-        "SELECT username, email FROM users WHERE (username = ? OR email = ?) AND password = ?",
-        [usernameOrEmail, usernameOrEmail, password]
-      );
-      if (rows.length === 0)
-        return res.status(401).json({ error: "Invalid credentials" });
+// Register
+app.post('/api/register', (req, res) => {
+const { username, email, password } = req.body;
 
-      req.session.user = rows[0];
-      res.json({ success: true, user: rows[0] });
-    } else {
-      const users = loadJSON("users.json");
-      const user = users.find(
-        (u) =>
-          (u.username === usernameOrEmail || u.email === usernameOrEmail) &&
-          u.password === password
-      );
-      if (!user) return res.status(401).json({ error: "Invalid credentials" });
+if (!username || !email || !password)
+return res.status(400).json({ error: 'All fields required' });
 
-      req.session.user = user;
-      res.json({ success: true, user });
-    }
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Login failed" });
-  }
+const sql = 'INSERT INTO users (username, email, password) VALUES (?, ?, ?)';
+db.query(sql, [username, email, password], (err) => {
+if (err) return res.status(500).json({ error: 'User registration failed' });
+res.json({ message: 'User registered successfully' });
+});
 });
 
-// --- FETCH BOOKS ---
-app.get("/api/books", async (req, res) => {
-  try {
-    if (pool) {
-      const [rows] = await pool.query("SELECT * FROM books ORDER BY created_at DESC");
-      res.json(rows);
-    } else {
-      const books = loadJSON("books.json");
-      res.json(books);
-    }
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Could not fetch books" });
-  }
+// Login
+app.post('/api/login', (req, res) => {
+const { email, password } = req.body;
+const sql = 'SELECT * FROM users WHERE email = ? AND password = ?';
+db.query(sql, [email, password], (err, result) => {
+if (err || result.length === 0)
+return res.status(401).json({ error: 'Invalid credentials' });
+
+```
+req.session.user = result[0];
+res.json({ message: 'Login successful', user: result[0] });
+```
+
+});
 });
 
-// --- ADD BOOK ---
-app.post("/api/books", async (req, res) => {
-  try {
-    if (!req.session || !req.session.user)
-      return res.status(401).json({ error: "Login required" });
-
-    const { title, author, publisher, price, image, condition } = req.body;
-    if (!title || !author || !publisher)
-      return res.status(400).json({ error: "Missing required fields" });
-
-    const id = "b" + Date.now();
-    const seller = req.session.user.username;
-    const img =
-      image || `https://picsum.photos/seed/${encodeURIComponent(title)}/400/600`;
-
-    if (pool) {
-      await pool.query(
-        "INSERT INTO books (id, title, author, publisher, price, image, condition, seller) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        [id, title, author, publisher, price || 0, img, condition || "Used - Good", seller]
-      );
-    } else {
-      const books = loadJSON("books.json");
-      books.push({
-        id,
-        title,
-        author,
-        publisher,
-        price,
-        image: img,
-        condition,
-        seller,
-      });
-      saveJSON("books.json", books);
-    }
-
-    res.json({ success: true, message: "Book added successfully" });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to add book" });
-  }
+// Logout
+app.post('/api/logout', (req, res) => {
+req.session.destroy();
+res.json({ message: 'Logged out successfully' });
 });
 
-// --- DELETE BOOK ---
-app.delete("/api/books/:id", async (req, res) => {
-  try {
-    if (!req.session || !req.session.user)
-      return res.status(401).json({ error: "Login required" });
+// ========== BOOKS MANAGEMENT ==========
 
-    const bookId = req.params.id;
-
-    if (pool) {
-      const [rows] = await pool.query("SELECT seller FROM books WHERE id = ?", [bookId]);
-      if (rows.length === 0) return res.status(404).json({ error: "Book not found" });
-      if (rows[0].seller !== req.session.user.username)
-        return res.status(403).json({ error: "Unauthorized" });
-
-      await pool.query("DELETE FROM books WHERE id = ?", [bookId]);
-    } else {
-      const books = loadJSON("books.json");
-      const filtered = books.filter((b) => b.id !== bookId);
-      saveJSON("books.json", filtered);
-    }
-
-    res.json({ success: true, message: "Book deleted" });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Delete failed" });
-  }
+// Add Book
+app.post('/api/books', (req, res) => {
+const { title, author, genre, price, seller_email } = req.body;
+const sql =
+'INSERT INTO books (title, author, genre, price, seller_email) VALUES (?, ?, ?, ?, ?)';
+db.query(sql, [title, author, genre, price, seller_email], (err) => {
+if (err) {
+console.error('Error adding book:', err);
+return res.status(500).json({ error: 'Failed to add book' });
+}
+res.json({ message: 'Book added successfully' });
+});
 });
 
-// --- LOGOUT ---
-app.post("/api/logout", (req, res) => {
-  req.session.destroy(() => {
-    res.json({ success: true });
-  });
+// Fetch all books
+app.get('/api/books', (req, res) => {
+const sql = 'SELECT * FROM books ORDER BY created_at DESC';
+db.query(sql, (err, rows) => {
+if (err) return res.status(500).json({ error: 'Could not fetch books' });
+res.json(rows);
+});
+});
+
+// Delete a book
+app.delete('/api/books/:id', (req, res) => {
+const sql = 'DELETE FROM books WHERE id = ?';
+db.query(sql, [req.params.id], (err) => {
+if (err) return res.status(500).json({ error: 'Failed to delete book' });
+res.json({ message: 'Book deleted successfully' });
+});
 });
 
 // ===============================
-// Frontend Fallback
+// Fallback route
 // ===============================
-app.get("*", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
+app.use((req, res) => {
+res.status(404).sendFile(path.join(__dirname, 'public', '404.html'));
 });
 
 // ===============================
-// Start Server
+// Start server
 // ===============================
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+console.log(`🚀 Server running on port ${PORT}`);
 });
