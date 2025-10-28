@@ -1,8 +1,8 @@
 /************************************************************************
-BookBuddy Frontend (connected to backend + image upload)
+BookBuddy Frontend (connected to backend)
 
 * Fetches and posts books via /api/books
-* Allows uploading a local image for each listing
+* Keeps all UI, login, chat, and SPA logic intact
   *************************************************************************/
 
 const $ = sel => document.querySelector(sel);
@@ -52,7 +52,7 @@ return;
 books.forEach(b=>{
 const div = document.createElement('div');
 div.className = 'card';
-div.innerHTML = `       <div class="thumb">         <img src="${b.image || 'https://picsum.photos/200'}" alt="cover">       </div>       <div class="meta">         <div class="title">${b.title}</div>         <div class="author">${b.author}</div>         <div class="price">₹ ${b.price}</div>       </div>
+div.innerHTML = `       <div class="thumb"><img src="${b.image || 'https://picsum.photos/200'}" alt="cover"></div>       <div class="meta">         <div class="title">${b.title}</div>         <div class="author">${b.author}</div>         <div class="price">₹ ${b.price}</div>       </div>
     `;
 container.appendChild(div);
 });
@@ -65,39 +65,21 @@ renderGrid('homeGrid', books.slice(0,4));
 renderGrid('buyGrid', books);
 }
 
-// Convert image file to Base64
-function getBase64(file){
-return new Promise((resolve, reject)=>{
-const reader = new FileReader();
-reader.onload = ()=>resolve(reader.result);
-reader.onerror = err=>reject(err);
-reader.readAsDataURL(file);
-});
-}
-
 // Sell page posting
 const postListingBtn = document.getElementById('postListingBtn');
 if(postListingBtn) postListingBtn.addEventListener('click', async ()=>{
 const cur = getCurrentUser();
 if(!cur){ alert('Login required'); return; }
-
 const title = $('#sellTitle').value.trim();
 const author = $('#sellAuthor').value.trim();
 const price = Number($('#sellPrice').value.trim());
-const imageFile = $('#sellImage')?.files[0] || null;
-
 if(!title || !author || !price){ alert('Fill all required fields'); return; }
 
-let imageData = '';
-if(imageFile) imageData = await getBase64(imageFile);
-
-await addBook({ title, author, price, image: imageData, seller_email: cur.email });
+await addBook({ title, author, price, seller_email: cur.email });
 alert('Book listed successfully!');
-
 $('#sellTitle').value = '';
 $('#sellAuthor').value = '';
 $('#sellPrice').value = '';
-if($('#sellImage')) $('#sellImage').value = '';
 });
 
 // Auth logic (simplified local for demo)
@@ -115,3 +97,7 @@ document.getElementById('loginExistingBtn')?.addEventListener('click', doLogin);
 
 // Startup
 document.addEventListener('DOMContentLoaded', loadBooks);
+
+	
+	
+	
