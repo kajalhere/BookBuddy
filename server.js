@@ -115,10 +115,9 @@ res.json({ message: 'Logged out successfully' });
 
 // Add Book
 app.post('/api/books', (req, res) => {
-const { title, author, price, seller_email } = req.body;
-const sql =
-'INSERT INTO books (title, author, price, seller_email) VALUES (?, ?, ?, ?)';
-db.query(sql, [title, author, price, seller_email], (err) => {
+const { title, author, price } = req.body;
+const sql = 'INSERT INTO books (title, author, price) VALUES (?, ?, ?)';
+db.query(sql, [title, author, price], (err) => {
 if (err) {
 console.error('Error adding book:', err);
 return res.status(500).json({ error: 'Failed to add book' });
@@ -129,7 +128,7 @@ res.json({ message: 'Book added successfully' });
 
 // Fetch all books
 app.get('/api/books', (req, res) => {
-const sql = 'SELECT * FROM books ORDER BY id DESC';
+const sql = 'SELECT id, title, author, price FROM books ORDER BY id DESC';
 db.query(sql, (err, rows) => {
 if (err) return res.status(500).json({ error: 'Could not fetch books' });
 res.json(rows);
