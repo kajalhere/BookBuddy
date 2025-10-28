@@ -141,6 +141,29 @@ app.use((req, res) => {
   res.status(404).sendFile(path.join(__dirname, 'public', '404.html'));
 });
 
+
+
+// ===============================
+// Test DB Connection (For Railway Debugging)
+// ===============================
+app.get('/test-db', (req, res) => {
+  if (!db) {
+    return res.status(500).json({ status: '❌ DB connection not initialized' });
+  }
+
+  db.query('SELECT NOW() AS current_time', (err, results) => {
+    if (err) {
+      console.error('Database test error:', err);
+      return res.status(500).json({ status: '❌ DB query failed', error: err.message });
+    }
+    res.json({
+      status: '✅ Database connected successfully',
+      server_time: results[0].current_time,
+    });
+  });
+});
+
+
 // ===============================
 // Start server
 // ===============================
