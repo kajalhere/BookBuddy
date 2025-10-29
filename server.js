@@ -54,6 +54,18 @@ let db;
       )
     `);
 
+    // Ensure 'publisher' column exists (auto-fix)
+try {
+  const [cols] = await db.query("SHOW COLUMNS FROM books LIKE 'publisher'");
+  if (cols.length === 0) {
+    await db.query("ALTER TABLE books ADD COLUMN publisher VARCHAR(255) AFTER author");
+    console.log("✅ Added missing 'publisher' column in books table.");
+  }
+} catch (err) {
+  console.error("⚠️ Failed to check/add 'publisher' column:", err);
+}
+
+
     await db.execute(`
       CREATE TABLE IF NOT EXISTS donations (
         id INT AUTO_INCREMENT PRIMARY KEY,
