@@ -191,6 +191,88 @@
     </div>
   </div>
 
+
+  <script>
+document.addEventListener("DOMContentLoaded", async () => {
+  try {
+    const res = await fetch("/api/books");
+    const books = await res.json();
+
+    const container = document.getElementById("homeGrid");
+    if (!container) return;
+
+    if (books.length === 0) {
+      container.innerHTML = "<p>No books listed yet.</p>";
+      return;
+    }
+
+    container.innerHTML = books.map(book => `
+      <div class="book-card">
+        <img src="${book.image || '/default.jpg'}" alt="${book.title}">
+        <h3>${book.title}</h3>
+        <p>Author: ${book.author}</p>
+        <p>Publisher: ${book.publisher}</p>
+        <p>Seller: ${book.seller}</p>
+      </div>
+    `).join("");
+  } catch (err) {
+    console.error("Error loading books:", err);
+  }
+});
+</script>
+
+
+<script>
+async function loadBooks() {
+  try {
+    const res = await fetch("/api/books");
+    const books = await res.json();
+
+    // Home page container
+    const homeGrid = document.getElementById("homeGrid");
+    if (homeGrid) {
+      homeGrid.innerHTML = books.length
+        ? books.map(book => `
+            <div class="book-card">
+              <img src="${book.image || '/default.jpg'}" alt="${book.title}">
+              <h3>${book.title}</h3>
+              <p>Author: ${book.author}</p>
+              <p>Publisher: ${book.publisher}</p>
+              <p>Seller: ${book.seller}</p>
+            </div>
+          `).join("")
+        : "<p>No books listed yet.</p>";
+    }
+
+    // Buy page container
+    const buyGrid = document.getElementById("buyGrid");
+    if (buyGrid) {
+      buyGrid.innerHTML = books.length
+        ? books.map(book => `
+            <div class="book-card">
+              <img src="${book.image || '/default.jpg'}" alt="${book.title}">
+              <h3>${book.title}</h3>
+              <p>Author: ${book.author}</p>
+              <p>Publisher: ${book.publisher}</p>
+              <p>Price: ₹${book.price || 0}</p>
+              <p>Condition: ${book.condition || 'Used - Good'}</p>
+              <p>Seller: ${book.seller}</p>
+            </div>
+          `).join("")
+        : "<p>No books available for sale.</p>";
+    }
+
+  } catch (err) {
+    console.error("Error loading books:", err);
+  }
+}
+
+// Load books once the DOM is ready
+document.addEventListener("DOMContentLoaded", loadBooks);
+</script>
+
+
+
   <script src="script.js" defer></script>
 </body>
 </html>
