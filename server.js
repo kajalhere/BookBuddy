@@ -46,6 +46,29 @@ let db;
       )
     `);
 
+await db.execute(`
+  CREATE TABLE IF NOT EXISTS donations (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    title VARCHAR(255),
+    meta VARCHAR(255),
+    location VARCHAR(255),
+    image TEXT,
+    donor VARCHAR(255)
+  )
+`);
+
+await db.execute(`
+  CREATE TABLE IF NOT EXISTS chats (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    chat_id VARCHAR(255),
+    participants TEXT,
+    messages JSON,
+    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  )
+`);
+
+
+
     console.log('✅ Tables verified or created.');
   } catch (err) {
     console.error('❌ MySQL connection failed:', err);
@@ -215,6 +238,75 @@ app.delete('/api/books/:id', async (req, res) => {
     res.status(500).json({ error: 'Database error' });
   }
 });
+
+// ===============================
+// DONATION ROUTES
+// ===============================
+app.get('/api/donations', async (req, res) => {
+  try {
+    const [rows] = await db.query('SELECT * FROM donations ORDER BY id DESC');
+    res.json(rows);
+  } catch (err) {
+    console.error('❌ Donation fetch error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.post('/api/donations', async (req, res) => {
+  const { title, meta, location, image, donor } = req.body;
+  if (!title) return res.status(400).json({ error: 'Missing title' });
+
+  try {
+    await db.query(
+      `INSERT INTO donations (title, meta, location, image, donor)
+       VALUES (?, ?, ?, ?, ?)`,
+      [
+        title,
+        meta || 'Unknown',
+        location || 'N/A',
+        image || `https://picsum.photos/seed/${encodeURIComponent(title)}/400/600`,
+        donor || 'GuestUser'
+      ]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('❌ Donation insert error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+// ===============================
+// CHAT ROUTES
+// ===============================
+app.get('/api/chats', async (req, res) => {
+  try {
+    const [rows] = await db.query('SELECT * FROM chats ORDER BY last_updated DESC');
+    res.json(rows);
+  } catch (err) {
+    console.error('❌ Chat fetch error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.post('/api/chats', async (req, res) => {
+  const { chat_id, participants, messages } = req.body;
+  if (!chat_id) return res.status(400).json({ error: 'Missing chat_id' });
+
+  try {
+    await db.query(
+      `INSERT INTO chats (chat_id, participants, messages)
+       VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE 
+         messages = VALUES(messages), 
+         last_updated = CURRENT_TIMESTAMP`,
+      [chat_id, JSON.stringify(participants || []), JSON.stringify(messages || [])]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('❌ Chat insert error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
 
 // ===============================
 // Frontend fallback
