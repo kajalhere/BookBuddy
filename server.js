@@ -115,51 +115,62 @@ app.get('/api/me', (req, res) => {
 });
 
 // Signup
+
+// ===============================
+// Signup (Fixed to match frontend)
+// ===============================
 app.post('/api/signup', async (req, res) => {
-  const { username, email, password } = req.body;
-  if (!username || !email || !password) return res.status(400).json({ error: 'Missing fields' });
+  const { username, email, pass } = req.body;
+  if (!username || !email || !pass)
+    return res.status(400).json({ error: 'Missing fields' });
 
   try {
     const [existing] = await db.query(
       'SELECT * FROM users WHERE username = ? OR email = ?',
       [username, email]
     );
-    if (existing.length > 0) return res.status(409).json({ error: 'User exists' });
+    if (existing.length > 0)
+      return res.status(409).json({ error: 'User already exists' });
 
     await db.query(
       'INSERT INTO users (username, email, password) VALUES (?, ?, ?)',
-      [username, email, password]
+      [username, email, pass]
     );
 
     req.session.user = { username, email };
     res.json({ success: true, user: { username, email } });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Database error' });
+    console.error('❌ Signup DB error:', err);
+    res.status(500).json({ error: 'Database error during signup' });
   }
 });
 
-// Login
+// ===============================
+// Login (Fixed to match frontend)
+// ===============================
 app.post('/api/login', async (req, res) => {
-  const { usernameOrEmail, password } = req.body;
-  if (!usernameOrEmail || !password) return res.status(400).json({ error: 'Missing fields' });
+  const { username, email, pass } = req.body;
+  if ((!username && !email) || !pass)
+    return res.status(400).json({ error: 'Missing credentials' });
 
   try {
     const [rows] = await db.query(
       'SELECT * FROM users WHERE (username = ? OR email = ?) AND password = ?',
-      [usernameOrEmail, usernameOrEmail, password]
+      [username || email, username || email, pass]
     );
 
-    if (rows.length === 0) return res.status(401).json({ error: 'Invalid credentials' });
+    if (rows.length === 0)
+      return res.status(401).json({ error: 'Invalid credentials' });
 
     const user = rows[0];
     req.session.user = { username: user.username, email: user.email };
     res.json({ success: true, user: { username: user.username, email: user.email } });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Database error' });
+    console.error('❌ Login DB error:', err);
+    res.status(500).json({ error: 'Database error during login' });
   }
 });
+
 
 // Logout
 app.post('/api/logout', (req, res) => {
