@@ -1,283 +1,482 @@
 /************************************************************************
-📚 BOOKBUDDY FRONTEND — MySQL Connected (No localStorage)
+📚 BookBuddy — Unified frontend (SPA) wired to Railway MySQL backend
+ API_BASE: uses window.location.origin so it works on Railway or locally
 ************************************************************************/
+
 const API_BASE = window.location.origin;
-const $ = s => document.querySelector(s);
+const $ = sel => document.querySelector(sel);
+const $$ = sel => Array.from(document.querySelectorAll(sel));
 
-// ============ AUTH =============
-async function signup() {
-  const username = $('#authUser').value.trim();
-  const email = $('#authEmail').value.trim();
-  const password = $('#authPass').value.trim();
-  if (!username || !email || !password) return alert('All fields required');
-  const res = await fetch(`${API_BASE}/api/signup`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, email, password })
-  });
-  const data = await res.json();
-  if (data.success) {
-    alert('Signup successful!');
-    closeAuth();
-  } else alert(data.error || 'Signup failed');
+/* ---------------------------
+   Global state
+   --------------------------- */
+let currentUser = null;        // { username, email } when logged in
+let activeChatId = null;
+let activeChatPartner = null;
+let chatPollInterval = null;
+const CHAT_REFRESH_MS = 4000;
+
+/* ---------------------------
+   Helpers: UI / formatting
+   --------------------------- */
+function numberWithCommas(x) { return (x == null) ? '0' : x.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+function escapeHtml(str) { if (!str) return ''; return String(str).replace(/[&<>"']/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m])); }
+
+/* ---------------------------
+   SPA Navigation
+   --------------------------- */
+function showPage(id) {
+  $$('.page').forEach(p => p.classList.remove('active'));
+  const page = document.getElementById(id + 'Page');
+  if (page) page.classList.add('active');
+  $$('.nav-link').forEach(a => a.classList.toggle('active', a.dataset.route === id));
 }
 
-async function login() {
-  const usernameOrEmail = $('#authUser').value.trim() || $('#authEmail').value.trim();
-  const password = $('#authPass').value.trim();
-  const res = await fetch(`${API_BASE}/api/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ usernameOrEmail, password })
+function initNavHandlers() {
+  $$('.nav-link').forEach(a => {
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      const route = a.dataset.route;
+      if (route) showPage(route);
+    });
   });
-  const data = await res.json();
-  if (data.success) {
-    alert('Logged in!');
-    closeAuth();
-    await fetchBooks();
-  } else alert(data.error || 'Login failed');
 }
 
-$('#signupBtn')?.addEventListener('click', signup);
-$('#loginExistingBtn')?.addEventListener('click', login);
-$('#loginNavBtn')?.addEventListener('click', () => $('#authModal').classList.add('open'));
-$('#closeAuth')?.addEventListener('click', () => $('#authModal').classList.remove('open'));
+/* ---------------------------
+   Auth: signup/login/logout + current user
+   --------------------------- */
 
-// ============ BOOKS =============
-async function fetchBooks() {
-  const res = await fetch(`${API_BASE}/api/books`);
-  const books = await res.json();
-  const grid = $('#buyGrid');
-  grid.innerHTML = '';
+async function fetchCurrentUser() {
+  try {
+    const res = await fetch(`${API_BASE}/api/me`, { credentials: 'include' });
+    if (!res.ok) { currentUser = null; return null; }
+    const json = await res.json();
+    currentUser = json.user || null;
+    return currentUser;
+  } catch (err) {
+    console.error('fetchCurrentUser error', err);
+    currentUser = null;
+    return null;
+  }
+}
+
+async function updateAuthState() {
+  await fetchCurrentUser();
+  const navBtn = $('#loginNavBtn');
+  if (navBtn) {
+    if (currentUser) {
+      navBtn.textContent = currentUser.username;
+      navBtn.onclick = () => {
+        if (confirm('Logout?')) doLogout();
+      };
+    } else {
+      navBtn.textContent = 'Login / Sign up';
+      navBtn.onclick = (e) => { e.preventDefault(); openAuth(); };
+    }
+  }
+}
+
+/* Signup expects { username, email, password } in body (server uses these) */
+async function doSignup() {
+  const username = $('#authUser')?.value.trim();
+  const email = $('#authEmail')?.value.trim();
+  const password = $('#authPass')?.value;
+  if (!username || !email || !password) { alert('Please fill all fields'); return; }
+
+  try {
+    const res = await fetch(`${API_BASE}/api/signup`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, email, password })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Signup failed');
+    await fetchCurrentUser();
+    closeAuth();
+    updateAuthState();
+    alert('Account created and logged in as ' + username);
+  } catch (err) {
+    console.error('Signup error', err);
+    alert('Signup failed: ' + (err.message || err));
+  }
+}
+
+/* Login expects { usernameOrEmail, password } in body (server route uses that) */
+async function doLogin() {
+  const usernameOrEmail = $('#authUser')?.value.trim() || $('#authEmail')?.value.trim();
+  const password = $('#authPass')?.value;
+  if (!usernameOrEmail || !password) { alert('Please fill all fields'); return; }
+
+  try {
+    const res = await fetch(`${API_BASE}/api/login`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ usernameOrEmail, password })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Login failed');
+    await fetchCurrentUser();
+    closeAuth();
+    updateAuthState();
+    alert('Logged in as ' + currentUser.username);
+    await fetchBooks(); // refresh book listing / seller info
+  } catch (err) {
+    console.error('Login error', err);
+    alert('Login failed: ' + (err.message || err));
+  }
+}
+
+async function doLogout() {
+  try {
+    await fetch(`${API_BASE}/api/logout`, { method: 'POST', credentials: 'include' });
+  } catch (err) {
+    console.error('Logout request failed', err);
+  }
+  currentUser = null;
+  updateAuthState();
+  alert('Logged out');
+}
+
+/* UI helpers for auth modal */
+function openAuth() { $('#authModal')?.classList.add('open'); }
+function closeAuth() { $('#authModal')?.classList.remove('open'); }
+
+/* ---------------------------
+   Books (fetch, render, post)
+   --------------------------- */
+
+function renderGrid(containerId, books) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  container.innerHTML = '';
+
+  if (!books || books.length === 0) {
+    const empty = document.createElement('div');
+    empty.style.padding = '22px';
+    empty.style.textAlign = 'center';
+    empty.style.color = 'var(--muted)';
+    empty.style.gridColumn = '1/-1';
+    empty.innerHTML = '<strong>No listings yet</strong><div style="font-size:13px;margin-top:6px">Post a book from the Sell page to see it here.</div>';
+    container.appendChild(empty);
+    return;
+  }
+
   books.forEach(b => {
     const div = document.createElement('div');
     div.className = 'card';
     div.innerHTML = `
-      <img src="${b.image}" alt="${b.title}" class="thumb"/>
+      <div class="thumb-wrap"><img src="${escapeHtml(b.image || `https://picsum.photos/seed/${encodeURIComponent(b.title||Date.now())}/400/600`)}" alt="${escapeHtml(b.title)} cover" class="thumb" loading="lazy"></div>
       <div class="meta">
-        <div class="title">${b.title}</div>
-        <div class="author">${b.author}</div>
-        <div class="price">₹${b.price}</div>
-        <button class="primary-btn chat-btn" data-seller="${b.seller}">Chat</button>
-      </div>`;
-    grid.appendChild(div);
+        <div class="title">${escapeHtml(b.title)}</div>
+        <div class="author">${escapeHtml(b.author)} • ${escapeHtml(b.publisher || '')}</div>
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div class="price">₹ ${numberWithCommas(b.price || 0)}</div>
+          <div class="condition" style="font-size:13px;color:var(--muted)">${escapeHtml(b.condition || b.book_condition || '')}</div>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn-small btn-buy" data-id="${escapeHtml(String(b.id))}">Buy</button>
+        <button class="btn-small btn-chat" data-id="${escapeHtml(String(b.id))}" data-seller="${escapeHtml(b.seller || '')}">Chat</button>
+        ${ (currentUser && currentUser.username === b.seller) ? `<button class="btn-small btn-delete" data-id="${escapeHtml(String(b.id))}" style="background:#fff;border:1px solid #d9443f;color:#d9443f">Delete</button>` : '' }
+      </div>
+    `;
+    container.appendChild(div);
   });
-  document.querySelectorAll('.chat-btn').forEach(btn => {
-    btn.addEventListener('click', e => openChatPopup(e.target.dataset.seller));
-  });
+
+  // attach listeners
+  container.querySelectorAll('.btn-chat').forEach(btn => btn.addEventListener('click', (e) => {
+    const bookId = e.currentTarget.dataset.id;
+    const seller = e.currentTarget.dataset.seller;
+    openChatForBook(bookId, seller);
+  }));
+  container.querySelectorAll('.btn-buy').forEach(btn => btn.addEventListener('click', (e) => {
+    openBuyFlow(e.currentTarget.dataset.id);
+  }));
+  container.querySelectorAll('.btn-delete').forEach(btn => btn.addEventListener('click', (e) => {
+    deleteBook(e.currentTarget.dataset.id);
+  }));
+}
+
+async function fetchBooks() {
+  try {
+    const res = await fetch(`${API_BASE}/api/books`, { credentials: 'include' });
+    if (!res.ok) throw new Error('Failed to fetch books');
+    const books = await res.json();
+    renderGrid('homeGrid', books.slice(0, 4));
+    renderGrid('buyGrid', books);
+    return books;
+  } catch (err) {
+    console.error('fetchBooks error', err);
+    // nothing else to do — show empty state in renderGrid
+    renderGrid('homeGrid', []);
+    renderGrid('buyGrid', []);
+    return [];
+  }
 }
 
 async function postBook() {
-  const title = $('#sellTitle').value.trim();
-  const author = $('#sellAuthor').value.trim();
-  const publisher = $('#sellPublisher').value.trim();
-  const price = $('#sellPrice').value.trim();
-  const condition = $('#sellCondition').value;
-  const image = $('#sellImage').value.trim();
-  const seller = prompt('Enter your username (temporary until login)');
-  const res = await fetch(`${API_BASE}/api/books`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title, author, publisher, price, image, condition, seller })
-  });
-  const data = await res.json();
-  alert(data.success ? 'Book added!' : 'Error posting book');
-  fetchBooks();
-}
-$('#postListingBtn')?.addEventListener('click', postBook);
+  const title = $('#sellTitle')?.value.trim();
+  const author = $('#sellAuthor')?.value.trim();
+  const publisher = $('#sellPublisher')?.value.trim();
+  const price = Number($('#sellPrice')?.value || 0);
+  const condition = $('#sellCondition')?.value;
+  let image = $('#sellImage')?.value.trim();
 
-// ============ DONATION ============
-$('#postDonateBtn')?.addEventListener('click', async () => {
-  const title = $('#donateTitle').value.trim();
-  const meta = $('#donateMeta').value.trim();
-  const location = $('#donateLocation').value.trim();
-  const donor = prompt('Enter your username (temporary)');
-  const res = await fetch(`${API_BASE}/api/donations`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title, meta, location, donor })
-  });
-  const data = await res.json();
-  alert(data.success ? 'Donation posted!' : 'Error');
-});
+  if (!title || !author || !publisher) { alert('Please fill all required fields'); return; }
+  if (!image) image = `https://picsum.photos/seed/${encodeURIComponent(title)}/400/600`;
 
-// ============ CHAT POPUP ============
-let activeChatId = null;
-let activePartner = null;
-let pollInterval = null;
+  const payload = { title, author, publisher, price, condition, image };
 
-function openChatPopup(seller) {
-  const curUser = prompt('Enter your username (temporary)');
-  activePartner = seller;
-  const participants = [curUser, seller].sort();
-  activeChatId = participants.join('_');
-  document.getElementById('chatModal').classList.add('open');
-  loadChat();
-  if (pollInterval) clearInterval(pollInterval);
-  pollInterval = setInterval(loadChat, 4000);
-}
-
-$('#sendChatBtn')?.addEventListener('click', async () => {
-  const text = $('#chatInput').value.trim();
-  if (!text) return;
-  const sender = prompt('Enter your username');
-  const res = await fetch(`${API_BASE}/api/chats`);
-  const chats = await res.json();
-  const existing = chats.find(c => c.chat_id === activeChatId);
-  const oldMsgs = existing && existing.messages ? JSON.parse(existing.messages) : [];
-  oldMsgs.push({ sender, text, time: Date.now() });
-  await fetch(`${API_BASE}/api/chats`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: activeChatId, participants: [sender, activePartner], messages: oldMsgs })
-  });
-  $('#chatInput').value = '';
-  loadChat();
-});
-
-async function loadChat() {
-  const res = await fetch(`${API_BASE}/api/chats`);
-  const chats = await res.json();
-  const chat = chats.find(c => c.chat_id === activeChatId);
-  const area = $('#messagesArea');
-  area.innerHTML = '';
-  if (chat && chat.messages) {
-    JSON.parse(chat.messages).forEach(msg => {
-      const div = document.createElement('div');
-      div.className = 'message';
-      div.textContent = `${msg.sender}: ${msg.text}`;
-      area.appendChild(div);
-    });
-  }
-}
-$('#closeChat')?.addEventListener('click', () => {
-  document.getElementById('chatModal').classList.remove('open');
-  if (pollInterval) clearInterval(pollInterval);
-});
-/************************************************************************
- 💬 ENHANCED CHAT MODULE — Logged-in Users Only (MySQL + Auto Refresh)
-************************************************************************/
-
-const CHAT_REFRESH_MS = 4000;
-let activeChatId = null;
-let activePartner = null;
-let chatPollInterval = null;
-
-// Open chat popup for a specific seller/book
-async function openChatPopup(sellerUsername) {
   try {
-    const curUserRes = await fetch(`${API_BASE}/api/me`, { credentials: 'include' });
-    const curUserData = await curUserRes.json();
-    const curUser = curUserData.user;
-    if (!curUser) {
-      alert('Please log in to start a chat.');
-      document.getElementById('authModal').classList.add('open');
-      return;
-    }
-
-    activePartner = sellerUsername;
-    const participants = [curUser.username, sellerUsername].sort();
-    activeChatId = participants.join('_');
-
-    document.getElementById('chatTitle').textContent = `Chat with ${sellerUsername}`;
-    document.getElementById('chatModal').classList.add('open');
-
-    await loadChatMessages();
-
-    if (chatPollInterval) clearInterval(chatPollInterval);
-    chatPollInterval = setInterval(loadChatMessages, CHAT_REFRESH_MS);
+    const res = await fetch(`${API_BASE}/api/books`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to save book');
+    await fetchBooks();
+    $('#sellTitle').value = ''; $('#sellAuthor').value = ''; $('#sellPublisher').value = ''; $('#sellPrice').value = ''; $('#sellImage').value = '';
+    alert('Listing posted.');
+    showPage('buy');
   } catch (err) {
-    console.error('❌ Error opening chat:', err);
+    console.error('postBook error', err);
+    alert('Failed to post book: ' + (err.message || err));
   }
 }
 
-// Load messages for current chat
+/* ---------------------------
+   Donations
+   --------------------------- */
+async function fetchDonations() {
+  try {
+    const res = await fetch(`${API_BASE}/api/donations`, { credentials: 'include' });
+    if (!res.ok) throw new Error('Failed to fetch donations');
+    const rows = await res.json();
+    // you can render donations similarly if you have a donations area
+    return rows;
+  } catch (err) {
+    console.error('fetchDonations error', err);
+    return [];
+  }
+}
+
+async function postDonation() {
+  const title = $('#donateTitle')?.value.trim();
+  const meta = $('#donateMeta')?.value.trim();
+  const location = $('#donateLocation')?.value.trim();
+  if (!title) { alert('Please add the book title'); return; }
+
+  const payload = { title, meta, location, image: `https://picsum.photos/seed/${encodeURIComponent(title)}/400/600` };
+
+  try {
+    const res = await fetch(`${API_BASE}/api/donations`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to save donation');
+    await fetchDonations();
+    $('#donateTitle').value = ''; $('#donateMeta').value = ''; $('#donateLocation').value = '';
+    alert('Donation posted (free listing).');
+    showPage('buy');
+  } catch (err) {
+    console.error('postDonation error', err);
+    alert('Failed to post donation: ' + (err.message || err));
+  }
+}
+
+/* ---------------------------
+   Buy flow (demo)
+   --------------------------- */
+function openBuyFlow(bookId) {
+  if (!currentUser) { if (confirm('You must be logged in to buy. Login now?')) openAuth(); return; }
+  // simple demo flow
+  const bookCard = document.querySelector(`.btn-buy[data-id="${bookId}"]`);
+  const title = bookCard ? bookCard.closest('.card').querySelector('.title')?.textContent : 'this item';
+  if (!confirm(`Buy "${title}" for demo?`)) return;
+  alert('Purchase successful (demo). Contact seller via chat to arrange pickup.');
+}
+
+/* ---------------------------
+   Delete book (server) - only seller allowed
+   --------------------------- */
+async function deleteBook(id) {
+  if (!currentUser) { openAuth(); return; }
+  if (!confirm('Confirm delete?')) return;
+  try {
+    const res = await fetch(`${API_BASE}/api/books/${id}`, {
+      method: 'DELETE',
+      credentials: 'include'
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Delete failed');
+    await fetchBooks();
+    alert('Book deleted');
+  } catch (err) {
+    console.error('deleteBook error', err);
+    alert('Delete failed: ' + (err.message || err));
+  }
+}
+
+/* ---------------------------
+   Chat — Enhanced (logged-in users, DB-backed)
+   --------------------------- */
+
+function openChatForBook(bookId, sellerUsername) {
+  // ensure user logged in
+  if (!currentUser) { openAuth(); return; }
+  activeChatPartner = sellerUsername;
+  const participants = [currentUser.username, sellerUsername].sort();
+  activeChatId = participants.join('_');
+  $('#chatTitle').textContent = `Chat — ${sellerUsername}`;
+  $('#chatModal')?.classList.add('open');
+  loadChatMessages();
+  if (chatPollInterval) clearInterval(chatPollInterval);
+  chatPollInterval = setInterval(loadChatMessages, CHAT_REFRESH_MS);
+}
+
 async function loadChatMessages() {
   if (!activeChatId) return;
   try {
     const res = await fetch(`${API_BASE}/api/chats`, { credentials: 'include' });
-    const allChats = await res.json();
-    const chat = allChats.find(c => c.chat_id === activeChatId);
-    const area = document.getElementById('messagesArea');
+    if (!res.ok) throw new Error('Failed to fetch chats');
+    const rows = await res.json();
+    const chat = rows.find(r => r.chat_id === activeChatId);
+    const area = $('#messagesArea');
+    if (!area) return;
     area.innerHTML = '';
-
     if (chat && chat.messages) {
-      const msgs = JSON.parse(chat.messages);
-      msgs.forEach(msg => {
-        const div = document.createElement('div');
-        div.className = 'message ' + (msg.sender === (getCurrentUser()?.username || '') ? 'me' : 'them');
-        div.textContent = `${msg.sender}: ${msg.text}`;
-        area.appendChild(div);
+      let messages = [];
+      try { messages = JSON.parse(chat.messages || '[]'); } catch { messages = []; }
+      messages.forEach(m => {
+        const el = document.createElement('div');
+        el.className = 'bubble ' + ((m.sender === (currentUser && currentUser.username)) ? 'me' : 'them');
+        el.innerHTML = `<div style="font-size:13px;margin-bottom:6px;color:var(--muted)">${escapeHtml(m.sender)} • ${new Date(m.time || m.ts || Date.now()).toLocaleString()}</div><div>${escapeHtml(m.text)}</div>`;
+        area.appendChild(el);
       });
       area.scrollTop = area.scrollHeight;
     } else {
-      area.innerHTML = `<div style="color:gray;text-align:center;margin-top:10px;">No messages yet. Start chatting!</div>`;
+      area.innerHTML = '<div style="color:var(--muted);padding:12px">No messages yet — start the conversation!</div>';
     }
   } catch (err) {
-    console.error('❌ Error loading messages:', err);
+    console.error('loadChatMessages error', err);
   }
 }
 
-// Send a message
-document.getElementById('sendChatBtn')?.addEventListener('click', async () => {
-  const input = document.getElementById('chatInput');
+async function sendChatMessage() {
+  const input = $('#chatInput');
+  if (!input) return;
   const text = input.value.trim();
-  if (!text || !activeChatId) return;
+  if (!text) return;
+  if (!currentUser) { openAuth(); return; }
+  if (!activeChatId) return alert('No active chat');
 
   try {
-    const curRes = await fetch(`${API_BASE}/api/me`, { credentials: 'include' });
-    const curData = await curRes.json();
-    const curUser = curData.user;
-    if (!curUser) {
-      alert('Please log in first.');
-      document.getElementById('authModal').classList.add('open');
-      return;
-    }
-
+    // fetch existing chat
     const res = await fetch(`${API_BASE}/api/chats`, { credentials: 'include' });
-    const allChats = await res.json();
-    const existingChat = allChats.find(c => c.chat_id === activeChatId);
-    const oldMsgs = existingChat && existingChat.messages ? JSON.parse(existingChat.messages) : [];
+    const rows = await res.json();
+    const existing = rows.find(r => r.chat_id === activeChatId);
+    let messages = [];
+    if (existing && existing.messages) {
+      try { messages = JSON.parse(existing.messages); } catch { messages = []; }
+    }
+    const newMsg = { sender: currentUser.username, text, time: Date.now() };
+    messages.push(newMsg);
 
-    const newMsg = { sender: curUser.username, text, time: Date.now() };
-    const updatedMsgs = [...oldMsgs, newMsg];
-
-    await fetch(`${API_BASE}/api/chats`, {
+    const postRes = await fetch(`${API_BASE}/api/chats`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: activeChatId,
-        participants: [curUser.username, activePartner],
-        messages: updatedMsgs
+        participants: [currentUser.username, activeChatPartner],
+        messages
       })
     });
-
+    const data = await postRes.json();
+    if (!postRes.ok) throw new Error(data.error || 'Failed to send message');
     input.value = '';
     await loadChatMessages();
   } catch (err) {
-    console.error('❌ Error sending message:', err);
-  }
-});
-
-// Close chat popup
-document.getElementById('closeChat')?.addEventListener('click', () => {
-  document.getElementById('chatModal').classList.remove('open');
-  if (chatPollInterval) clearInterval(chatPollInterval);
-  chatPollInterval = null;
-  activeChatId = null;
-  activePartner = null;
-});
-
-// Utility to get logged-in user quickly
-function getCurrentUser() {
-  try {
-    const u = localStorage.getItem('currentUser');
-    return u ? JSON.parse(u) : null;
-  } catch {
-    return null;
+    console.error('sendChatMessage error', err);
+    alert('Failed to send message: ' + (err.message || err));
   }
 }
 
+/* Close chat */
+function closeChatPopup() {
+  $('#chatModal')?.classList.remove('open');
+  if (chatPollInterval) { clearInterval(chatPollInterval); chatPollInterval = null; }
+  activeChatId = null;
+  activeChatPartner = null;
+}
 
-document.addEventListener('DOMContentLoaded', fetchBooks);
+/* ---------------------------
+   Wiring initial event listeners
+   --------------------------- */
+function attachUIHandlers() {
+  // Auth
+  $('#signupBtn')?.addEventListener('click', doSignup);
+  $('#loginExistingBtn')?.addEventListener('click', doLogin);
+  $('#closeAuth')?.addEventListener('click', closeAuth);
+
+  // Post book
+  $('#postListingBtn')?.addEventListener('click', postBook);
+  // Post donation
+  $('#postDonateBtn')?.addEventListener('click', postDonation);
+
+  // Chat UI
+  $('#sendChatBtn')?.addEventListener('click', sendChatMessage);
+  $('#closeChat')?.addEventListener('click', closeChatPopup);
+
+  // Search handlers (if present)
+  $('#searchBtn')?.addEventListener('click', () => {
+    const q = $('#globalSearch')?.value || '';
+    searchAndShow(q);
+    showPage('buy');
+  });
+  $('#globalSearch')?.addEventListener('keyup', (e) => {
+    if (e.key === 'Enter') { searchAndShow($('#globalSearch')?.value || ''); showPage('buy'); }
+    else searchAndShow($('#globalSearch')?.value || '');
+  });
+}
+
+/* Search helper (client side) */
+function searchAndShow(q) {
+  q = (q || '').trim().toLowerCase();
+  // simple re-use: fetch current rendered books from buyGrid DOM (or call fetchBooks again)
+  // For simplicity, call fetchBooks and filter response
+  fetch(`${API_BASE}/api/books`, { credentials: 'include' }).then(r => r.json()).then(books => {
+    if (!q) { renderGrid('homeGrid', books.slice(0,4)); renderGrid('buyGrid', books); return; }
+    const matched = books.filter(b =>
+      (b.title || '').toLowerCase().includes(q) ||
+      (b.author || '').toLowerCase().includes(q) ||
+      (b.publisher || '').toLowerCase().includes(q) ||
+      (b.seller || '').toLowerCase().includes(q)
+    );
+    renderGrid('homeGrid', matched.slice(0,8));
+    renderGrid('buyGrid', matched);
+  }).catch(err => console.error('search error', err));
+}
+
+/* ---------------------------
+   Startup: DOMContentLoaded
+   --------------------------- */
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    initNavHandlers();
+    attachUIHandlers();
+    await fetchCurrentUser();
+    await Promise.all([fetchBooks(), fetchDonations()]);
+    updateAuthState();
+    console.log('✅ Frontend initialized');
+  } catch (err) {
+    console.error('Initialization error', err);
+  }
+});
