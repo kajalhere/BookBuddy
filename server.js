@@ -65,6 +65,17 @@ try {
   console.error("⚠️ Failed to check/add 'publisher' column:", err);
 }
 
+// Ensure 'book_condition' column exists (auto-fix)
+try {
+  const [cols] = await db.query("SHOW COLUMNS FROM books LIKE 'book_condition'");
+  if (cols.length === 0) {
+    await db.query("ALTER TABLE books ADD COLUMN book_condition VARCHAR(100) AFTER image");
+    console.log("✅ Added missing 'book_condition' column in books table.");
+  }
+} catch (err) {
+  console.error("⚠️ Failed to check/add 'book_condition' column:", err);
+}
+
 
     await db.execute(`
       CREATE TABLE IF NOT EXISTS donations (
