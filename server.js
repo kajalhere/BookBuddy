@@ -147,9 +147,14 @@ app.post('/api/logout', (req, res) => {
 });
 
 // Get all books
+// Get all books (normalize field name for frontend)
 app.get('/api/books', async (req, res) => {
   try {
-    const [books] = await db.query('SELECT * FROM books ORDER BY id DESC');
+    const [rows] = await db.query('SELECT * FROM books ORDER BY id DESC');
+    const books = rows.map(b => ({
+      ...b,
+      condition: b.book_condition // rename to match frontend
+    }));
     res.json(books);
   } catch (err) {
     console.error(err);
@@ -157,12 +162,11 @@ app.get('/api/books', async (req, res) => {
   }
 });
 
-// Create book (requires login)
-app.post('/api/books', async (req, res) => {
-  if (!req.session || !req.session.user)
-    return res.status(401).json({ error: 'Auth required' });
 
-  const { title, author, publisher, price, image, condition } = req.body;
+// Create book (requires login)
+// Create book (public — compatible with frontend script.js)
+app.post('/api/books', async (req, res) => {
+  const { title, author, publisher, price, image, condition, seller } = req.body;
   if (!title || !author || !publisher)
     return res.status(400).json({ error: 'Missing fields' });
 
@@ -177,7 +181,7 @@ app.post('/api/books', async (req, res) => {
         Number(price) || 0,
         image || `https://picsum.photos/seed/${encodeURIComponent(title)}/400/600`,
         condition || 'Used - Good',
-        req.session.user.username
+        seller || 'GuestUser'
       ]
     );
 
@@ -187,6 +191,7 @@ app.post('/api/books', async (req, res) => {
     res.status(500).json({ error: 'Database error' });
   }
 });
+
 
 // Delete book (only seller can delete)
 app.delete('/api/books/:id', async (req, res) => {
