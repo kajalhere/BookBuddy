@@ -14,6 +14,23 @@ const $ = sel => document.querySelector(sel);
 const $$ = sel => Array.from(document.querySelectorAll(sel));
 const LS = window.localStorage;
 
+// === FETCH BOOKS FROM SERVER (MySQL) ===
+async function fetchBooksFromServer() {
+  try {
+    const res = await fetch('/api/books');
+    const books = await res.json();
+
+    // Save to localStorage for offline use
+    LS.setItem('books', JSON.stringify(books));
+
+    console.log('✅ Books loaded from server:', books);
+    refreshAll(); // re-render grids
+  } catch (err) {
+    console.error('❌ Failed to fetch from server, using local data:', err);
+  }
+}
+
+
 // (kept sampleUsers so demo sign-in is possible; books start empty)
 const sampleUsers = [
   { username: 'alice', email:'alice@example.com', pass:'alice123' },
@@ -518,3 +535,6 @@ document.addEventListener('DOMContentLoaded', function(){
   const initial = (document.body && document.body.dataset && document.body.dataset.page) ? document.body.dataset.page : 'home';
   showPage(initial);
 });
+// Load from server after page loads
+fetchBooksFromServer();
+
