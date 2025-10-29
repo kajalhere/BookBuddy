@@ -190,66 +190,69 @@ $$('.nav-link').forEach(a => a.addEventListener('click', (e) => { e.preventDefau
 $$('.cta-row button, .top-nav a, .primary-btn[data-route]').forEach(btn => btn.addEventListener('click', (e) => { const route = e.currentTarget.dataset.route; if (route) showPage(route); }));
 
 // --- Auth: use server endpoints
+
+// ======================== SIGNUP (MySQL Integrated) =========================
 async function doSignup() {
   const email = $('#authEmail').value.trim();
   const username = $('#authUser').value.trim();
   const pass = $('#authPass').value;
-  if (!email || !username || !pass) { alert('Please fill all fields'); return; }
+
+  if (!email || !username || !pass) {
+    alert('Please fill all fields');
+    return;
+  }
 
   try {
-    const res = await fetch(`${API_BASE}/api/signup`, {
+    const res = await fetch('/api/signup', {
       method: 'POST',
-      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, email, password: pass })
+      body: JSON.stringify({ email, username, pass })
     });
-    if (!res.ok) {
-      const err = await res.json().catch(()=>({error:'Signup failed'}));
-      return alert(err.error || 'Signup failed');
-    }
+
     const data = await res.json();
-    // server sets session cookie; fetch current user
-    const user = await fetchCurrentUserFromServer();
-    setCurrentUserLocal(user);
+    if (!res.ok) throw new Error(data.error || 'Signup failed');
+
+    setCurrentUser(data.user);
     closeAuth();
     updateAuthState();
-    refreshAll();
-    alert('Account created and logged in as ' + user.username);
+    alert('Account created and logged in as ' + username);
   } catch (err) {
-    console.error('Signup error', err);
-    alert('Signup failed (network error).');
+    console.error('❌ Signup error:', err);
+    alert('Signup failed: ' + err.message);
   }
 }
 
+// ======================== LOGIN (MySQL Integrated) =========================
 async function doLogin() {
   const email = $('#authEmail').value.trim();
   const username = $('#authUser').value.trim();
   const pass = $('#authPass').value;
-  if (!username && !email) { alert('Enter username or email'); return; }
-  if (!pass) { alert('Enter password'); return; }
+
+  if ((!email && !username) || !pass) {
+    alert('Please fill all fields');
+    return;
+  }
 
   try {
-    const res = await fetch(`${API_BASE}/api/login`, {
+    const res = await fetch('/api/login', {
       method: 'POST',
-      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ usernameOrEmail: username || email, password: pass })
+      body: JSON.stringify({ email, username, pass })
     });
-    if (!res.ok) {
-      const err = await res.json().catch(()=>({error:'Login failed'}));
-      return alert(err.error || 'Login failed');
-    }
-    // session cookie set by server
-    const user = await fetchCurrentUserFromServer();
-    setCurrentUserLocal(user);
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Login failed');
+
+    setCurrentUser(data.user);
     closeAuth();
     updateAuthState();
-    alert('Logged in as ' + user.username);
+    alert('Logged in as ' + data.user.username);
   } catch (err) {
-    console.error('Login error', err);
-    alert('Login failed (network error).');
+    console.error('❌ Login error:', err);
+    alert('Login failed: ' + err.message);
   }
 }
+
 
 async function doLogout() {
   try {
@@ -371,137 +374,114 @@ function openBuyFlow(bookId) {
 }
 
 // --- CHAT: store in DB
+/************************************************************************
+ 📩 CHAT MODULE — Buy Page Popup Chat (MySQL + Auto Refresh)
+************************************************************************/
 let activeChatId = null;
+let activeChatPartner = null;
+let chatPoll = null;
 
-function openListingChat(bookId) {
-  const cur = getCurrentUserLocal();
-  if (!cur) { if (confirm('You must be logged in to chat. Login now?')) openAuth(); return; }
-  const book = getBooks().find(b => b.id === bookId);
-  if (!book) return;
-  const seller = book.seller;
-  const buyer = cur.username;
-  const chatId = `chat_${bookId}_${buyer}_${seller}`;
-  activeChatId = chatId;
-  openChatModal(`Chat — ${book.title} (with ${seller})`);
-  renderChatMessages(chatId);
-  // load server chat messages (if any)
-  fetchChatsFromServer().then(() => renderChatMessages(chatId));
+// Open chat popup for a specific seller/book
+async function openListingChat(bookId) {
+  const books = getBooks();
+  const book = books.find(b => b.id == bookId);
+  if (!book) return alert('Book not found');
+
+  const curUser = getCurrentUserLocal();
+  if (!curUser) {
+    alert('Please log in to start chat.');
+    openAuth();
+    return;
+  }
+
+  activeChatPartner = book.seller;
+  const chatUsers = [curUser.username, book.seller].sort();
+  activeChatId = chatUsers.join('_');
+
+  document.getElementById('chatTitle').textContent = `Chat with ${book.seller}`;
+  document.getElementById('chatModal').classList.add('open');
+
+  loadChatMessages();
+  if (chatPoll) clearInterval(chatPoll);
+  chatPoll = setInterval(loadChatMessages, 5000); // refresh every 5s
 }
 
-function openChatModal(title) {
-  $('#chatTitle').textContent = title;
-  $('#chatModal')?.classList.add('open');
-}
-$('#closeChat')?.addEventListener('click', () => { $('#chatModal')?.classList.remove('open'); activeChatId = null; });
-$('#openChats')?.addEventListener('click', async () => {
-  const cur = await fetchCurrentUserFromServer();
-  if (!cur) { if (confirm('Login to view chats?')) openAuth(); return; }
-  // show list
-  const rows = await fetchChatsFromServer();
-  const area = $('#messagesArea');
-  area.innerHTML = '';
-  const curUser = cur.username;
-  const filtered = (rows || []).filter(r => {
-    try { const parts = JSON.parse(r.participants || '[]'); return parts.includes(curUser); } catch { return false; }
-  });
-  if (!filtered.length) { area.innerHTML = `<div style="color:var(--muted);padding:12px">No chats yet.</div>`; return; }
-  filtered.forEach(row => {
-    const parts = JSON.parse(row.participants || '[]');
-    const other = parts.filter(p => p !== curUser).join(', ');
-    const lastMsg = (() => { try { const m = JSON.parse(row.messages || '[]'); return m.length ? m[m.length - 1].text : '(no messages)'; } catch { return '(no messages)'; } })();
-    const btn = document.createElement('div');
-    btn.style.padding = '12px';
-    btn.style.borderRadius = '10px';
-    btn.style.cursor = 'pointer';
-    btn.style.background = '#fff';
-    btn.style.marginBottom = '8px';
-    btn.style.boxShadow = '0 6px 18px rgba(0,0,0,0.03)';
-    btn.innerHTML = `<strong>${escapeHtml(row.chat_id)}</strong><div style="font-size:13px;color:var(--muted)">With: ${escapeHtml(other)}</div><div style="margin-top:8px;color:var(--muted)">${escapeHtml(truncate(lastMsg,80))}</div>`;
-    btn.addEventListener('click', () => { activeChatId = row.chat_id; renderChatMessages(row.chat_id); });
-    area.appendChild(btn);
-  });
+// Close chat
+document.getElementById('closeChat')?.addEventListener('click', () => {
+  document.getElementById('chatModal').classList.remove('open');
+  if (chatPoll) clearInterval(chatPoll);
+  chatPoll = null;
+  activeChatId = null;
+  activeChatPartner = null;
 });
 
-$('#sendChatBtn')?.addEventListener('click', sendMessage);
-$('#chatInput')?.addEventListener('keyup', (e) => { if (e.key === 'Enter') sendMessage(); });
+// Load messages from DB
+async function loadChatMessages() {
+  if (!activeChatId) return;
+  try {
+    const res = await fetch(`${API_BASE}/api/chats`);
+    const chats = await res.json();
+    const chat = chats.find(c => c.chat_id === activeChatId);
+    const messagesArea = document.getElementById('messagesArea');
+    messagesArea.innerHTML = '';
 
-async function sendMessage() {
-  const cur = await fetchCurrentUserFromServer();
-  if (!cur) { openAuth(); return; }
-  const txt = $('#chatInput').value.trim();
-  if (!txt) return;
-  if (!activeChatId) { alert('Select or open a chat first'); return; }
-
-  const chatsRaw = await fetchChatsFromServer();
-  // find existing record
-  const existing = (chatsRaw || []).find(r => r.chat_id === activeChatId);
-  let messages = [];
-  if (existing) {
-    try { messages = JSON.parse(existing.messages || '[]'); } catch { messages = []; }
-  } else {
-    // create base participants from chatId if pattern chat_<book>_<buyer>_<seller>
-    const parts = activeChatId.split('_');
-    const participants = (parts[0] === 'chat' && parts.length >= 4) ? [parts[2], parts[3]] : [cur.username];
-    // persist a new chat skeleton to DB
-    await fetch(`${API_BASE}/api/chats`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ chat_id: activeChatId, participants, messages: [] })
-    }).catch(()=>{});
-    messages = [];
+    if (chat && chat.messages) {
+      const msgs = JSON.parse(chat.messages);
+      msgs.forEach(msg => {
+        const div = document.createElement('div');
+        div.className = 'message ' + (msg.sender === getCurrentUserLocal().username ? 'me' : 'them');
+        div.textContent = `${msg.sender}: ${msg.text}`;
+        messagesArea.appendChild(div);
+      });
+      messagesArea.scrollTop = messagesArea.scrollHeight;
+    } else {
+      messagesArea.innerHTML = '<div style="color:gray;text-align:center;margin-top:10px;">Start chatting...</div>';
+    }
+  } catch (err) {
+    console.error('❌ Chat load error:', err);
   }
+}
 
-  const now = Date.now();
-  const messageObj = { from: cur.username, text: txt, ts: now };
-  messages.push(messageObj);
+// Send message
+document.getElementById('sendChatBtn')?.addEventListener('click', async () => {
+  const input = document.getElementById('chatInput');
+  const text = input.value.trim();
+  if (!text) return;
+
+  const curUser = getCurrentUserLocal();
+  if (!curUser) {
+    alert('Please log in first');
+    openAuth();
+    return;
+  }
 
   try {
+    // Load current messages first
+    const res = await fetch(`${API_BASE}/api/chats`);
+    const chats = await res.json();
+    const existingChat = chats.find(c => c.chat_id === activeChatId);
+    const oldMsgs = existingChat && existingChat.messages ? JSON.parse(existingChat.messages) : [];
+
+    const newMsg = { sender: curUser.username, text, timestamp: Date.now() };
+    const updatedMsgs = [...oldMsgs, newMsg];
+
     await fetch(`${API_BASE}/api/chats`, {
       method: 'POST',
-      credentials: 'include',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ chat_id: activeChatId, participants: messages.length ? [/* participants are inferred on server if absent */] : [], messages })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: activeChatId,
+        participants: [curUser.username, activeChatPartner],
+        messages: updatedMsgs
+      })
     });
-    $('#chatInput').value = '';
-    await fetchChatsFromServer();
-    renderChatMessages(activeChatId);
-  } catch (err) {
-    console.error('sendMessage failed', err);
-    // fallback to local chat store
-    const localChats = getChatsLocal();
-    if (!localChats[activeChatId]) localChats[activeChatId] = { participants: [cur.username], messages: [] };
-    localChats[activeChatId].messages.push(messageObj);
-    saveChatsLocal(localChats);
-    renderChatMessages(activeChatId);
-  }
-}
 
-function renderChatMessages(chatId) {
-  const area = $('#messagesArea');
-  if (!area) return;
-  const cur = getCurrentUserLocal();
-  if (!chatId) { area.innerHTML = '<div style="color:var(--muted);padding:12px">Select a chat from list.</div>'; return; }
-  // try server
-  const chatsRaw = safeGet('chats', null) || [];
-  const serverChat = (chatsRaw || []).find(r => r.chat_id === chatId);
-  let messages = [];
-  if (serverChat) {
-    try { messages = JSON.parse(serverChat.messages || '[]'); } catch { messages = []; }
-  } else {
-    const local = getChatsLocal();
-    messages = local[chatId] ? local[chatId].messages : [];
+    input.value = '';
+    await loadChatMessages();
+  } catch (err) {
+    console.error('❌ Chat send error:', err);
   }
-  $('#chatTitle').textContent = (serverChat && serverChat.chat_id) ? serverChat.chat_id : chatId;
-  area.innerHTML = '';
-  (messages || []).forEach(m => {
-    const el = document.createElement('div');
-    el.className = 'bubble ' + (m.from === (cur && cur.username) ? 'me' : 'them');
-    el.innerHTML = `<div style="font-size:13px;margin-bottom:6px;color:var(--muted)">${escapeHtml(m.from)} • ${new Date(m.ts).toLocaleString()}</div><div>${escapeHtml(m.text)}</div>`;
-    area.appendChild(el);
-  });
-  area.scrollTop = area.scrollHeight;
-}
+});
+
 
 // --- Delete listing (server)
 async function deleteBook(id) {

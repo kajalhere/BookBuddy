@@ -318,6 +318,90 @@ app.post('/api/chats', async (req, res) => {
   }
 });
 
+// ===============================
+// 📘 Donations API
+// ===============================
+app.get('/api/donations', async (req, res) => {
+  try {
+    const [donations] = await db.query('SELECT * FROM donations ORDER BY id DESC');
+    res.json(donations);
+  } catch (err) {
+    console.error('❌ Error fetching donations:', err);
+    res.status(500).json({ error: 'Database error fetching donations' });
+  }
+});
+
+app.post('/api/donations', async (req, res) => {
+  const { title, meta, location, image, donor } = req.body;
+  if (!title || !meta || !location)
+    return res.status(400).json({ error: 'Missing fields' });
+
+  try {
+    await db.query(
+      `INSERT INTO donations (title, meta, location, image, donor)
+       VALUES (?, ?, ?, ?, ?)`,
+      [
+        title,
+        meta,
+        location,
+        image || `https://picsum.photos/seed/${encodeURIComponent(title)}/400/600`,
+        donor || (req.session.user ? req.session.user.username : 'Anonymous')
+      ]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('❌ Donation insert error:', err);
+    res.status(500).json({ error: 'Database error while saving donation' });
+  }
+});
+
+
+// ===============================
+// 💬 Chat API
+// ===============================
+app.get('/api/chats/:chatId', async (req, res) => {
+  const { chatId } = req.params;
+  try {
+    const [rows] = await db.query('SELECT * FROM chats WHERE chat_id = ?', [chatId]);
+    if (rows.length === 0) return res.json({ chat_id: chatId, messages: [] });
+
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('❌ Error fetching chat:', err);
+    res.status(500).json({ error: 'Database error fetching chat' });
+  }
+});
+
+app.post('/api/chats/:chatId', async (req, res) => {
+  const { chatId } = req.params;
+  const { message, sender } = req.body;
+
+  if (!message || !sender)
+    return res.status(400).json({ error: 'Missing sender or message' });
+
+  try {
+    const [rows] = await db.query('SELECT * FROM chats WHERE chat_id = ?', [chatId]);
+    let messages = [];
+
+    if (rows.length > 0) {
+      messages = JSON.parse(rows[0].messages);
+      messages.push({ sender, message, time: new Date().toISOString() });
+      await db.query('UPDATE chats SET messages = ? WHERE chat_id = ?', [JSON.stringify(messages), chatId]);
+    } else {
+      messages = [{ sender, message, time: new Date().toISOString() }];
+      await db.query(
+        'INSERT INTO chats (chat_id, participants, messages) VALUES (?, ?, ?)',
+        [chatId, JSON.stringify([sender]), JSON.stringify(messages)]
+      );
+    }
+
+    res.json({ success: true, chat_id: chatId, messages });
+  } catch (err) {
+    console.error('❌ Chat update error:', err);
+    res.status(500).json({ error: 'Database error while updating chat' });
+  }
+});
+
 
 // ===============================
 // Frontend fallback
