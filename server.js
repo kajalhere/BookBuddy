@@ -30,74 +30,77 @@ let db;
     console.log('✅ MySQL connected successfully!');
 
     // Create tables if not exist
-    await db.execute(`
-      CREATE TABLE IF NOT EXISTS users (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        username VARCHAR(255) UNIQUE,
-        email VARCHAR(255) UNIQUE,
-        password VARCHAR(255),
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
+    
+    // ----------------------------
+// AUTO-CREATE + SELF-HEALING SCHEMA
+// ----------------------------
 
-    await db.execute(`
-      CREATE TABLE IF NOT EXISTS books (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        title VARCHAR(255),
-        author VARCHAR(255),
-        publisher VARCHAR(255),
-        price DECIMAL(10,2) DEFAULT 0,
-        image TEXT,
-        book_condition VARCHAR(100),
-        seller VARCHAR(255),
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
+// Create core tables if not exist
+await db.execute(`
+  CREATE TABLE IF NOT EXISTS users (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(255) UNIQUE,
+    email VARCHAR(255) UNIQUE,
+    password VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  )
+`);
 
-    // Ensure 'publisher' column exists (auto-fix)
-try {
-  const [cols] = await db.query("SHOW COLUMNS FROM books LIKE 'publisher'");
-  if (cols.length === 0) {
-    await db.query("ALTER TABLE books ADD COLUMN publisher VARCHAR(255) AFTER author");
-    console.log("✅ Added missing 'publisher' column in books table.");
+await db.execute(`
+  CREATE TABLE IF NOT EXISTS books (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    title VARCHAR(255),
+    author VARCHAR(255),
+    price DECIMAL(10,2) DEFAULT 0,
+    image TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
+await db.execute(`
+  CREATE TABLE IF NOT EXISTS donations (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    title VARCHAR(255),
+    meta VARCHAR(255),
+    location VARCHAR(255),
+    image TEXT,
+    donor VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
+await db.execute(`
+  CREATE TABLE IF NOT EXISTS chats (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    chat_id VARCHAR(255) UNIQUE,
+    participants JSON,
+    messages JSON,
+    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  )
+`);
+
+console.log('✅ Base tables ready.');
+
+// ----------------------------
+// AUTO-FIX MISSING COLUMNS (BOOKS TABLE)
+// ----------------------------
+const requiredColumns = {
+  publisher: "VARCHAR(255)",
+  book_condition: "VARCHAR(100)",
+  seller: "VARCHAR(255)",
+  buyer: "VARCHAR(255)"
+};
+
+for (const [col, type] of Object.entries(requiredColumns)) {
+  const [rows] = await db.query(`SHOW COLUMNS FROM books LIKE ?`, [col]);
+  if (rows.length === 0) {
+    console.log(`🛠 Adding missing column '${col}' to books...`);
+    await db.query(`ALTER TABLE books ADD COLUMN ${col} ${type}`);
   }
-} catch (err) {
-  console.error("⚠️ Failed to check/add 'publisher' column:", err);
 }
 
-// Ensure 'book_condition' column exists (auto-fix)
-try {
-  const [cols] = await db.query("SHOW COLUMNS FROM books LIKE 'book_condition'");
-  if (cols.length === 0) {
-    await db.query("ALTER TABLE books ADD COLUMN book_condition VARCHAR(100) AFTER image");
-    console.log("✅ Added missing 'book_condition' column in books table.");
-  }
-} catch (err) {
-  console.error("⚠️ Failed to check/add 'book_condition' column:", err);
-}
+console.log('✅ Books table columns verified/fixed.');
 
-
-    await db.execute(`
-      CREATE TABLE IF NOT EXISTS donations (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        title VARCHAR(255),
-        meta VARCHAR(255),
-        location VARCHAR(255),
-        image TEXT,
-        donor VARCHAR(255),
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    await db.execute(`
-      CREATE TABLE IF NOT EXISTS chats (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        chat_id VARCHAR(255) UNIQUE,
-        participants JSON,
-        messages JSON,
-        last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-      )
-    `);
 
     console.log('✅ Tables ready.');
   } catch (err) {
