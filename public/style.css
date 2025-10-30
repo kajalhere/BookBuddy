@@ -197,3 +197,47 @@ footer a{ color:var(--muted); text-decoration:none; padding:6px 10px; border-rad
   object-fit: cover;
 }
 
+/* ===== DONATION PAGE STYLES ===== */
+.donation-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 20px;
+  margin-top: 20px;
+  padding: 10px;
+}
+
+.donation-card {
+  background: var(--light-gray);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 12px;
+  padding: 16px;
+  text-align: center;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.04);
+  transition: transform 0.3s ease;
+}
+
+.donation-card:hover {
+  transform: translateY(-4px);
+}
+
+.donation-card img {
+  width: 100%;
+  max-width: 150px;
+  height: 150px;
+  border-radius: 8px;
+  object-fit: cover;
+  margin-bottom: 10px;
+}
+
+.donation-card h4 {
+  font-family: "Playfair Display", serif;
+  font-size: 18px;
+  margin: 6px 0;
+  color: #111;
+}
+
+.donation-card p {
+  font-size: 14px;
+  color: var(--muted);
+  margin: 4px 0;
+}
