@@ -30,7 +30,6 @@
           <a href="#" data-route="buy" class="nav-link">Buy</a>
           <a href="#" data-route="sell" class="nav-link">Sell</a>
           <a href="#" data-route="donate" class="nav-link">Donate</a>
-          <!-- LOGIN / SIGNUP moved into nav -->
           <a href="#" id="loginNavBtn">Login / Sign up</a>
         </nav>
       </header>
@@ -39,7 +38,6 @@
       <section class="hero page" id="homePage">
         <h2 id="hero-heading">Every Book Deserves<br>a Second Reader.</h2>
 
-        <!-- Search bar moved under tagline -->
         <div class="search-wrap" style="max-width:900px;margin:0 auto 8px;">
           <input id="globalSearch" class="search-input" placeholder="Search books, authors, publishers or users..." />
           <button class="search-btn" id="searchBtn">Search</button>
@@ -57,9 +55,7 @@
 
         <h3 class="section-title">Explore Books</h3>
 
-        <div id="homeGrid" class="grid" aria-live="polite">
-          <!-- books inserted by JS -->
-        </div>
+        <div id="homeGrid" class="grid" aria-live="polite"></div>
       </section>
 
       <!-- BUY PAGE -->
@@ -141,12 +137,10 @@
           </div>
           <p style="color:var(--muted);font-size:13px;margin-top:10px">Donations are posted as free listings for others to claim.</p>
         </div>
-<hr style="margin: 30px 0; border: none; border-top: 1px solid #ccc;">
-<h3 class="section-title">Available Donations</h3>
-<div id="donation-list" class="donation-grid">
-  
-</div>
 
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #ccc;">
+        <h3 class="section-title">Available Donations</h3>
+        <div id="donation-list" class="donation-grid"></div>
       </section>
 
       <!-- LOGIN / SIGNUP MODAL -->
@@ -171,22 +165,19 @@
         </div>
       </div>
 
-      <!-- CHAT MODAL (shared for listing chat & global chats) -->
+      <!-- CHAT MODAL -->
       <div id="chatModal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
         <div class="modal-header">
           <div id="chatTitle">Chat</div>
           <div><button class="secondary-btn" id="closeChat">Close</button></div>
         </div>
-
         <div class="messages" id="messagesArea" aria-live="polite"></div>
-
         <div class="chat-input">
           <input id="chatInput" placeholder="Write your message..." />
           <button id="sendChatBtn">Send</button>
         </div>
       </div>
 
-      <!-- global chat floating button -->
       <div class="floating-chat">
         <button id="openChats">Chats</button>
       </div>
@@ -195,5 +186,64 @@
   </div>
 
   <script src="script.js" defer></script>
+
+  <!-- 📚 Added Donation Script -->
+  <script>
+  async function loadDonations() {
+    try {
+      const res = await fetch('/api/donations');
+      const donations = await res.json();
+      const list = document.getElementById('donation-list');
+      list.innerHTML = '';
+
+      if (!donations.length) {
+        list.innerHTML = '<p style="color:gray;">No donations yet. Be the first to donate!</p>';
+        return;
+      }
+
+      donations.forEach(d => {
+        const card = document.createElement('div');
+        card.className = 'donation-card';
+        card.innerHTML = `
+          <img src="${d.image || 'https://picsum.photos/200'}" alt="${d.title}">
+          <h4>${d.title}</h4>
+          <p>${d.meta || 'Unknown Author/Publisher'}</p>
+          <p><strong>📍 ${d.location || 'N/A'}</strong></p>
+          <p><em>Donor: ${d.donor || 'Anonymous'}</em></p>
+        `;
+        list.appendChild(card);
+      });
+    } catch (err) {
+      console.error('Error loading donations:', err);
+    }
+  }
+
+  document.getElementById('postDonateBtn').addEventListener('click', async () => {
+    const title = document.getElementById('donateTitle').value.trim();
+    const meta = document.getElementById('donateMeta').value.trim();
+    const location = document.getElementById('donateLocation').value.trim();
+
+    if (!title) return alert('Please enter a book title');
+
+    const res = await fetch('/api/donations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, meta, location })
+    });
+
+    const data = await res.json();
+    if (data.success) {
+      alert('Donation posted successfully!');
+      document.getElementById('donateTitle').value = '';
+      document.getElementById('donateMeta').value = '';
+      document.getElementById('donateLocation').value = '';
+      loadDonations();
+    } else {
+      alert('Error posting donation.');
+    }
+  });
+
+  document.addEventListener('DOMContentLoaded', loadDonations);
+  </script>
 </body>
 </html>
