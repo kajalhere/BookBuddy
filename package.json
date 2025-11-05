@@ -4,7 +4,7 @@
   "description": "BookBuddy demo project (Express backend + SPA frontend)",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "nodemon server.js"
   },
   "dependencies": {
     "body-parser": "^1.20.2",
@@ -23,5 +23,8 @@
   "bugs": {
     "url": "https://github.com/kajalhere/bookbuddy/issues"
   },
-  "homepage": "https://github.com/kajalhere/bookbuddy#readme"
+  "homepage": "https://github.com/kajalhere/bookbuddy#readme",
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  }
 }

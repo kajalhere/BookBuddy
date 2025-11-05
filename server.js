@@ -1,110 +1,199 @@
 /************************************************************************
- 📚 BOOKBUDDY — Node + Express + MySQL (Railway) - Clean server.js
+ 📚 BOOKBUDDY – Node + Express + MySQL (Railway) - AUTO_INCREMENT FIX
 ************************************************************************/
 const express = require('express');
 const path = require('path');
 const bodyParser = require('body-parser');
 const session = require('express-session');
 const mysql = require('mysql2/promise');
+require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// trust proxy for correct secure cookie handling when behind Railway/Heroku-style proxies
+// Trust proxy for correct secure cookie handling when behind Railway/Heroku-style proxies
 if (process.env.NODE_ENV === 'production') app.set('trust proxy', 1);
 
 // ===============================
 // MySQL Connection (Railway)
 // ===============================
 let db;
+let dbInitialized = false;
+
 (async () => {
   try {
     db = await mysql.createConnection({
-      host: process.env.MYSQLHOST || process.env.MYSQL_HOST,
-      user: process.env.MYSQLUSER || process.env.MYSQL_USER,
-      password: process.env.MYSQLPASSWORD || process.env.MYSQL_PASSWORD,
-      database: process.env.MYSQLDATABASE || process.env.MYSQL_DATABASE,
-      port: process.env.MYSQLPORT || process.env.MYSQL_PORT
+      host: process.env.MYSQL_HOST,
+      user: process.env.MYSQL_USER,
+      password: process.env.MYSQL_PASSWORD,
+      database: process.env.MYSQL_DATABASE,
+      port: process.env.MYSQL_PORT,
     });
 
     console.log('✅ MySQL connected successfully!');
-
-    // Create tables if not exist
+    console.log("🌐 Connected to host:", process.env.MYSQL_HOST);
     
     // ----------------------------
-// AUTO-CREATE + SELF-HEALING SCHEMA
-// ----------------------------
+    // CRITICAL FIX: Repair existing tables to support AUTO_INCREMENT
+    // ----------------------------
+    
+    // Check if users table exists and fix AUTO_INCREMENT
+    const [userTableExists] = await db.query(
+      "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'users'",
+      [process.env.MYSQL_DATABASE]
+    );
 
-// Create core tables if not exist
-await db.execute(`
-  CREATE TABLE IF NOT EXISTS users (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    username VARCHAR(255) UNIQUE,
-    email VARCHAR(255) UNIQUE,
-    password VARCHAR(255),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-  )
-`);
+    if (userTableExists.length > 0) {
+      console.log('🔧 Users table exists - fixing AUTO_INCREMENT...');
+      
+      // Modify existing id column to be AUTO_INCREMENT
+      try {
+        await db.query(`
+          ALTER TABLE users 
+          MODIFY COLUMN id INT NOT NULL AUTO_INCREMENT
+        `);
+        console.log('✅ Users table id column fixed!');
+      } catch (err) {
+        console.log('ℹ️ Users table already has correct structure or needs recreation');
+      }
+    } else {
+      // Create new table with proper structure
+      await db.execute(`
+        CREATE TABLE users (
+          id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          name VARCHAR(255) UNIQUE NOT NULL,
+          email VARCHAR(255) UNIQUE NOT NULL,
+          password_hash VARCHAR(255) NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+      `);
+      console.log('✅ Users table created!');
+    }
 
-await db.execute(`
-  CREATE TABLE IF NOT EXISTS books (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    title VARCHAR(255),
-    author VARCHAR(255),
-    price DECIMAL(10,2) DEFAULT 0,
-    image TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-  )
-`);
+    // Check if books table exists and fix AUTO_INCREMENT
+    const [bookTableExists] = await db.query(
+      "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'books'",
+      [process.env.MYSQL_DATABASE]
+    );
 
-await db.execute(`
-  CREATE TABLE IF NOT EXISTS donations (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    title VARCHAR(255),
-    meta VARCHAR(255),
-    location VARCHAR(255),
-    image TEXT,
-    donor VARCHAR(255),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-  )
-`);
+    if (bookTableExists.length > 0) {
+      console.log('🔧 Books table exists - fixing AUTO_INCREMENT...');
+      
+      try {
+        await db.query(`
+          ALTER TABLE books 
+          MODIFY COLUMN id INT NOT NULL AUTO_INCREMENT
+        `);
+        console.log('✅ Books table id column fixed!');
+      } catch (err) {
+        console.log('ℹ️ Books table already has correct structure');
+      }
+    } else {
+      await db.execute(`
+        CREATE TABLE books (
+          id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          title VARCHAR(255) NOT NULL,
+          author VARCHAR(255) NOT NULL,
+          price DECIMAL(10,2) DEFAULT 0,
+          image TEXT,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+      `);
+      console.log('✅ Books table created!');
+    }
 
-await db.execute(`
-  CREATE TABLE IF NOT EXISTS chats (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    chat_id VARCHAR(255) UNIQUE,
-    participants JSON,
-    messages JSON,
-    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-  )
-`);
+    // Check if donations table exists and fix AUTO_INCREMENT
+    const [donationTableExists] = await db.query(
+      "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'donations'",
+      [process.env.MYSQL_DATABASE]
+    );
 
-console.log('✅ Base tables ready.');
+    if (donationTableExists.length > 0) {
+      console.log('🔧 Donations table exists - fixing AUTO_INCREMENT...');
+      
+      try {
+        await db.query(`
+          ALTER TABLE donations 
+          MODIFY COLUMN id INT NOT NULL AUTO_INCREMENT
+        `);
+        console.log('✅ Donations table id column fixed!');
+      } catch (err) {
+        console.log('ℹ️ Donations table already has correct structure');
+      }
+    } else {
+      await db.execute(`
+        CREATE TABLE donations (
+          id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          title VARCHAR(255) NOT NULL,
+          meta VARCHAR(255),
+          location VARCHAR(255),
+          image TEXT,
+          donor VARCHAR(255),
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+      `);
+      console.log('✅ Donations table created!');
+    }
 
-// ----------------------------
-// AUTO-FIX MISSING COLUMNS (BOOKS TABLE)
-// ----------------------------
-const requiredColumns = {
-  publisher: "VARCHAR(255)",
-  book_condition: "VARCHAR(100)",
-  seller: "VARCHAR(255)",
-  buyer: "VARCHAR(255)"
-};
+    // Check if chats table exists and fix AUTO_INCREMENT
+    const [chatTableExists] = await db.query(
+      "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'chats'",
+      [process.env.MYSQL_DATABASE]
+    );
 
-for (const [col, type] of Object.entries(requiredColumns)) {
-  const [rows] = await db.query(`SHOW COLUMNS FROM books LIKE ?`, [col]);
-  if (rows.length === 0) {
-    console.log(`🛠 Adding missing column '${col}' to books...`);
-    await db.query(`ALTER TABLE books ADD COLUMN ${col} ${type}`);
-  }
-}
+    if (chatTableExists.length > 0) {
+      console.log('🔧 Chats table exists - fixing AUTO_INCREMENT...');
+      
+      try {
+        await db.query(`
+          ALTER TABLE chats 
+          MODIFY COLUMN id INT NOT NULL AUTO_INCREMENT
+        `);
+        console.log('✅ Chats table id column fixed!');
+      } catch (err) {
+        console.log('ℹ️ Chats table already has correct structure');
+      }
+    } else {
+      await db.execute(`
+        CREATE TABLE chats (
+          id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          chat_id VARCHAR(255) UNIQUE NOT NULL,
+          participants JSON,
+          messages JSON,
+          last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+      `);
+      console.log('✅ Chats table created!');
+    }
 
-console.log('✅ Books table columns verified/fixed.');
+    console.log('✅ Base tables ready.');
 
+    // ----------------------------
+    // AUTO-FIX MISSING COLUMNS (BOOKS TABLE)
+    // ----------------------------
+    const requiredColumns = {
+      publisher: "VARCHAR(255)",
+      book_condition: "VARCHAR(100)",
+      seller: "VARCHAR(255)",
+      buyer: "VARCHAR(255)"
+    };
 
-    console.log('✅ Tables ready.');
+    for (const [col, type] of Object.entries(requiredColumns)) {
+      const [rows] = await db.query(`SHOW COLUMNS FROM books LIKE ?`, [col]);
+      if (rows.length === 0) {
+        console.log(`🛠 Adding missing column '${col}' to books...`);
+        await db.query(`ALTER TABLE books ADD COLUMN ${col} ${type}`);
+      }
+    }
+
+    console.log('✅ Books table columns verified/fixed.');
+    console.log('✅ All tables ready - Database fully initialized!');
+    
+    dbInitialized = true;
+
   } catch (err) {
-    console.error('❌ MySQL connection failed:', err);
+    console.error('❌ MySQL connection/setup failed:', err);
+    dbInitialized = false;
   }
 })();
 
@@ -120,79 +209,144 @@ app.use(session({
   saveUninitialized: false,
   cookie: {
     httpOnly: true,
-    secure: (process.env.NODE_ENV === 'production'), // secure cookies in production (Railway)
+    secure: (process.env.NODE_ENV === 'production'),
     sameSite: (process.env.NODE_ENV === 'production') ? 'none' : 'lax'
   }
 }));
 
 // Helper: ensure DB ready before queries
 function requireDb(res) {
-  if (!db) {
-    res.status(500).json({ error: 'Database not initialized' });
+  if (!db || !dbInitialized) {
+    console.error('❌ Database not ready yet - rejecting request');
+    res.status(503).json({ 
+      error: 'Database is initializing. Please wait a moment and try again.' 
+    });
     return false;
   }
   return true;
 }
 
 // ===============================
+// Health Check
+// ===============================
+app.get('/api/health', (req, res) => {
+  res.json({ 
+    status: (db && dbInitialized) ? 'ready' : 'initializing',
+    database: !!db,
+    initialized: dbInitialized
+  });
+});
+
+// ===============================
 // Utility: /api/me
 // ===============================
 app.get('/api/me', (req, res) => {
   if (req.session && req.session.user) {
-    // expose only username & email to frontend
-    return res.json({ user: { username: req.session.user.username, email: req.session.user.email } });
+    return res.json({ 
+      user: { 
+        username: req.session.user.username, 
+        email: req.session.user.email 
+      } 
+    });
   }
   return res.json({ user: null });
 });
 
 // ===============================
-// User Auth Routes
+// User Auth Routes (FIXED - No id in INSERT)
 // ===============================
+
 app.post('/api/signup', async (req, res) => {
   if (!requireDb(res)) return;
+  
   const { username, email, password } = req.body;
-  if (!username || !email || !password) return res.status(400).json({ error: 'Missing fields' });
+  
+  if (!username || !email || !password) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
 
   try {
-    const [existing] = await db.query('SELECT id FROM users WHERE username = ? OR email = ?', [username, email]);
-    if (existing.length > 0) return res.status(409).json({ error: 'User already exists' });
+    // Check if user already exists
+    const [existing] = await db.query(
+      'SELECT id FROM users WHERE name = ? OR email = ?', 
+      [username, email]
+    );
+    
+    if (existing.length > 0) {
+      return res.status(409).json({ error: 'Username or email already exists' });
+    }
 
-    await db.query('INSERT INTO users (username, email, password) VALUES (?, ?, ?)', [username, email, password]);
-    req.session.user = { username, email };
-    return res.json({ success: true, user: { username, email } });
+    // FIXED: Don't include id in INSERT - let AUTO_INCREMENT handle it
+    const [result] = await db.query(
+      'INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)', 
+      [username, email, password]
+    );
+    
+    // Create session with correct field mapping
+    req.session.user = { username: username, email: email };
+    
+    console.log('✅ User signed up:', username, '(ID:', result.insertId, ')');
+    
+    return res.json({ 
+      success: true, 
+      user: { username: username, email: email } 
+    });
+    
   } catch (err) {
-    console.error('Signup error:', err);
-    return res.status(500).json({ error: 'Database error' });
+    console.error('❌ Signup error:', err);
+    return res.status(500).json({ 
+      error: 'Database error during signup',
+      details: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
   }
 });
 
 app.post('/api/login', async (req, res) => {
   if (!requireDb(res)) return;
+  
   const { usernameOrEmail, password } = req.body;
-  if (!usernameOrEmail || !password) return res.status(400).json({ error: 'Missing credentials' });
+  
+  if (!usernameOrEmail || !password) {
+    return res.status(400).json({ error: 'Missing credentials' });
+  }
 
   try {
+    // Query user by username or email
     const [rows] = await db.query(
-      'SELECT * FROM users WHERE (username = ? OR email = ?) AND password = ?',
+      'SELECT * FROM users WHERE (name = ? OR email = ?) AND password_hash = ?',
       [usernameOrEmail, usernameOrEmail, password]
     );
-    if (rows.length === 0) return res.status(401).json({ error: 'Invalid credentials' });
+    
+    if (rows.length === 0) {
+      return res.status(401).json({ error: 'Invalid username/email or password' });
+    }
+    
     const user = rows[0];
-    req.session.user = { username: user.username, email: user.email };
-    return res.json({ success: true, user: { username: user.username, email: user.email } });
+    
+    // Create session using user.name (the actual DB column)
+    req.session.user = { username: user.name, email: user.email };
+    
+    console.log('✅ User logged in:', user.name);
+    
+    return res.json({ 
+      success: true, 
+      user: { username: user.name, email: user.email } 
+    });
+    
   } catch (err) {
-    console.error('Login error:', err);
-    return res.status(500).json({ error: 'Database error' });
+    console.error('❌ Login error:', err);
+    return res.status(500).json({ error: 'Database error during login' });
   }
 });
 
 app.post('/api/logout', (req, res) => {
   req.session.destroy(err => {
     if (err) {
-      console.error('Logout error', err);
+      console.error('❌ Logout error:', err);
       return res.status(500).json({ error: 'Failed to logout' });
     }
     res.clearCookie('bookbuddy.sid');
+    console.log('✅ User logged out');
     return res.json({ success: true });
   });
 });
@@ -202,52 +356,95 @@ app.post('/api/logout', (req, res) => {
 // ===============================
 app.get('/api/books', async (req, res) => {
   if (!requireDb(res)) return;
+  
   try {
     const [rows] = await db.query('SELECT * FROM books ORDER BY id DESC');
-    // match frontend expected field name 'condition'
-    const books = rows.map(b => ({ ...b, condition: b.book_condition }));
+    
+    // Map book_condition to condition for frontend compatibility
+    const books = rows.map(b => ({ 
+      ...b, 
+      condition: b.book_condition 
+    }));
+    
     return res.json(books);
+    
   } catch (err) {
-    console.error('Fetch books error:', err);
-    return res.status(500).json({ error: 'Database error' });
+    console.error('❌ Fetch books error:', err);
+    return res.status(500).json({ error: 'Database error fetching books' });
   }
 });
 
 app.post('/api/books', async (req, res) => {
   if (!requireDb(res)) return;
+  
   const { title, author, publisher, price, image, condition, seller } = req.body;
-  if (!title || !author || !publisher) return res.status(400).json({ error: 'Missing fields' });
+  
+  if (!title || !author || !publisher) {
+    return res.status(400).json({ error: 'Missing required fields: title, author, publisher' });
+  }
 
-  // prefer session user for seller when available
-  const sellerName = (req.session && req.session.user && req.session.user.username) ? req.session.user.username : (seller || 'GuestUser');
+  // Use session username as seller, fallback to provided seller or 'GuestUser'
+  const sellerName = (req.session && req.session.user && req.session.user.username) 
+    ? req.session.user.username 
+    : (seller || 'GuestUser');
 
   try {
-    await db.query(
+    // FIXED: Don't include id in INSERT
+    const [result] = await db.query(
       'INSERT INTO books (title, author, publisher, price, image, book_condition, seller) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [title, author, publisher, Number(price) || 0, image || `https://picsum.photos/seed/${encodeURIComponent(title)}/400/600`, condition || 'Used - Good', sellerName]
+      [
+        title, 
+        author, 
+        publisher, 
+        Number(price) || 0, 
+        image || `https://picsum.photos/seed/${encodeURIComponent(title)}/400/600`, 
+        condition || 'Used - Good', 
+        sellerName
+      ]
     );
+    
+    console.log('✅ Book added:', title, 'by', sellerName, '(ID:', result.insertId, ')');
+    
     return res.json({ success: true });
+    
   } catch (err) {
-    console.error('Insert book error:', err);
-    return res.status(500).json({ error: 'Database error' });
+    console.error('❌ Insert book error:', err);
+    return res.status(500).json({ error: 'Database error adding book' });
   }
 });
 
 app.delete('/api/books/:id', async (req, res) => {
   if (!requireDb(res)) return;
+  
   const id = req.params.id;
-  if (!req.session || !req.session.user) return res.status(401).json({ error: 'Auth required' });
+  
+  if (!req.session || !req.session.user) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
 
   try {
+    // Check if book exists and belongs to user
     const [rows] = await db.query('SELECT * FROM books WHERE id = ?', [id]);
-    if (rows.length === 0) return res.status(404).json({ error: 'Book not found' });
+    
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Book not found' });
+    }
+    
     const book = rows[0];
-    if (book.seller !== req.session.user.username) return res.status(403).json({ error: 'Unauthorized' });
+    
+    if (book.seller !== req.session.user.username) {
+      return res.status(403).json({ error: 'Unauthorized: You can only delete your own books' });
+    }
+    
     await db.query('DELETE FROM books WHERE id = ?', [id]);
+    
+    console.log('✅ Book deleted:', id, 'by', req.session.user.username);
+    
     return res.json({ success: true });
+    
   } catch (err) {
-    console.error('Delete book error:', err);
-    return res.status(500).json({ error: 'Database error' });
+    console.error('❌ Delete book error:', err);
+    return res.status(500).json({ error: 'Database error deleting book' });
   }
 });
 
@@ -256,32 +453,51 @@ app.delete('/api/books/:id', async (req, res) => {
 // ===============================
 app.get('/api/donations', async (req, res) => {
   if (!requireDb(res)) return;
+  
   try {
     const [rows] = await db.query('SELECT * FROM donations ORDER BY id DESC');
     return res.json(rows);
+    
   } catch (err) {
-    console.error('Fetch donations error:', err);
-    return res.status(500).json({ error: 'Database error' });
+    console.error('❌ Fetch donations error:', err);
+    return res.status(500).json({ error: 'Database error fetching donations' });
   }
 });
 
 app.post('/api/donations', async (req, res) => {
   if (!requireDb(res)) return;
+  
   const { title, meta, location, image, donor } = req.body;
-  if (!title) return res.status(400).json({ error: 'Missing title' });
+  
+  if (!title) {
+    return res.status(400).json({ error: 'Missing required field: title' });
+  }
 
-  // prefer session user for donor when available
-  const donorName = (req.session && req.session.user && req.session.user.username) ? req.session.user.username : (donor || 'GuestUser');
+  // Use session username as donor, fallback to provided donor or 'GuestUser'
+  const donorName = (req.session && req.session.user && req.session.user.username) 
+    ? req.session.user.username 
+    : (donor || 'GuestUser');
 
   try {
-    await db.query(
+    // FIXED: Don't include id in INSERT
+    const [result] = await db.query(
       'INSERT INTO donations (title, meta, location, image, donor) VALUES (?, ?, ?, ?, ?)',
-      [title, meta || 'Unknown', location || 'N/A', image || `https://picsum.photos/seed/${encodeURIComponent(title)}/400/600`, donorName]
+      [
+        title, 
+        meta || 'Unknown', 
+        location || 'N/A', 
+        image || `https://picsum.photos/seed/${encodeURIComponent(title)}/400/600`, 
+        donorName
+      ]
     );
+    
+    console.log('✅ Donation added:', title, 'by', donorName, '(ID:', result.insertId, ')');
+    
     return res.json({ success: true });
+    
   } catch (err) {
-    console.error('Insert donation error:', err);
-    return res.status(500).json({ error: 'Database error' });
+    console.error('❌ Insert donation error:', err);
+    return res.status(500).json({ error: 'Database error adding donation' });
   }
 });
 
@@ -290,37 +506,54 @@ app.post('/api/donations', async (req, res) => {
 // ===============================
 app.get('/api/chats', async (req, res) => {
   if (!requireDb(res)) return;
+  
   try {
     const [rows] = await db.query('SELECT * FROM chats ORDER BY last_updated DESC');
     return res.json(rows);
+    
   } catch (err) {
-    console.error('Fetch chats error:', err);
-    return res.status(500).json({ error: 'Database error' });
+    console.error('❌ Fetch chats error:', err);
+    return res.status(500).json({ error: 'Database error fetching chats' });
   }
 });
 
 app.post('/api/chats', async (req, res) => {
   if (!requireDb(res)) return;
+  
   const { chat_id, participants, messages } = req.body;
-  if (!chat_id) return res.status(400).json({ error: 'Missing chat_id' });
+  
+  if (!chat_id) {
+    return res.status(400).json({ error: 'Missing required field: chat_id' });
+  }
 
   try {
-    // upsert chat row by unique chat_id
+    // Upsert chat row by unique chat_id (don't specify id)
     await db.query(
       `INSERT INTO chats (chat_id, participants, messages)
        VALUES (?, ?, ?)
-       ON DUPLICATE KEY UPDATE participants = VALUES(participants), messages = VALUES(messages), last_updated = CURRENT_TIMESTAMP`,
-      [chat_id, JSON.stringify(participants || []), JSON.stringify(messages || [])]
+       ON DUPLICATE KEY UPDATE 
+         participants = VALUES(participants), 
+         messages = VALUES(messages), 
+         last_updated = CURRENT_TIMESTAMP`,
+      [
+        chat_id, 
+        JSON.stringify(participants || []), 
+        JSON.stringify(messages || [])
+      ]
     );
+    
+    console.log('✅ Chat saved/updated:', chat_id);
+    
     return res.json({ success: true });
+    
   } catch (err) {
-    console.error('Chat insert/upsert error:', err);
-    return res.status(500).json({ error: 'Database error' });
+    console.error('❌ Chat insert/upsert error:', err);
+    return res.status(500).json({ error: 'Database error saving chat' });
   }
 });
 
 // ===============================
-// Frontend Fallback
+// Frontend Fallback (SPA routing)
 // ===============================
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
@@ -330,5 +563,7 @@ app.get('*', (req, res) => {
 // Start Server
 // ===============================
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🚀 BookBuddy Server running on port ${PORT}`);
+  console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🔗 Ready to accept connections...`);
 });
