@@ -40,6 +40,17 @@ function initNavHandlers() {
       if (route) showPage(route);
     });
   });
+
+
+
+  // 🔧 FIX: Add listeners for the red CTA buttons on home page
+  $$('button[data-route]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const route = btn.dataset.route;
+      if (route) showPage(route);
+    });
+  });
 }
 
 /* ---------------------------
@@ -268,9 +279,14 @@ async function postDonation() {
   const title = $('#donateTitle')?.value.trim();
   const meta = $('#donateMeta')?.value.trim();
   const location = $('#donateLocation')?.value.trim();
+  let image = $('#donateImage')?.value.trim(); // 🔧 NEW: Read from image field
+
   if (!title) { alert('Please add the book title'); return; }
 
-  const payload = { title, meta, location, image: `https://picsum.photos/seed/${encodeURIComponent(title)}/400/600` };
+  // Use provided image or generate placeholder
+  if (!image) image = `https://picsum.photos/seed/${encodeURIComponent(title)}/400/600`;
+  
+  const payload = { title, meta, location, image };
 
   try {
     const res = await fetch(`${API_BASE}/api/donations`, {
@@ -282,9 +298,15 @@ async function postDonation() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to save donation');
     await fetchDonations();
-    $('#donateTitle').value = ''; $('#donateMeta').value = ''; $('#donateLocation').value = '';
+    $('#donateTitle').value = '';
+    $('#donateMeta').value = ''; 
+    $('#donateLocation').value = '';
+    $('#donateImage').value = ''; // 🔧 NEW: Clear image field
     alert('Donation posted (free listing).');
-    showPage('buy');
+    // showPage('buy');
+
+    //Reload donations if on donate page
+    if(typeof loadDonations === 'function') loadDonations();
   } catch (err) {
     console.error('postDonation error', err);
     alert('Failed to post donation: ' + (err.message || err));

@@ -1,15 +1,19 @@
 <!doctype html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>BookBuddy</title>
 
   <!-- fonts -->
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=Inter:wght@300;400;600&display=swap"
+    rel="stylesheet">
 
   <link rel="stylesheet" href="style.css" />
 </head>
+
 <body data-page="home">
   <div class="page-wrap">
     <div class="site">
@@ -18,8 +22,8 @@
         <div style="display:flex;align-items:center;gap:12px">
           <div class="logo" aria-hidden="true">
             <svg viewBox="0 0 100 80" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-              <rect x="6" y="8" width="22" height="62" rx="3" fill="#d9443f"/>
-              <rect x="36" y="8" width="22" height="62" rx="3" fill="#d9443f" opacity="0.95"/>
+              <rect x="6" y="8" width="22" height="62" rx="3" fill="#d9443f" />
+              <rect x="36" y="8" width="22" height="62" rx="3" fill="#d9443f" opacity="0.95" />
             </svg>
             <h1>BookBuddy</h1>
           </div>
@@ -52,7 +56,8 @@
         </div>
 
         <div style="max-width:900px;margin:0 auto;text-align:center">
-          <p style="color:var(--muted);margin:0 0 12px">Search or browse books below. Click a book to chat with the seller.</p>
+          <p style="color:var(--muted);margin:0 0 12px">Search or browse books below. Click a book to chat with the
+            seller.</p>
         </div>
 
         <h3 class="section-title">Explore Books</h3>
@@ -116,7 +121,8 @@
             <button class="secondary-btn" id="clearSell">Clear</button>
           </div>
 
-          <p style="color:var(--muted);font-size:13px;margin-top:10px">You must be logged in to post. If not logged in you will be prompted to login/signup.</p>
+          <p style="color:var(--muted);font-size:13px;margin-top:10px">You must be logged in to post. If not logged in
+            you will be prompted to login/signup.</p>
         </div>
       </section>
 
@@ -136,15 +142,22 @@
             <label>Pickup Location (optional)</label>
             <input id="donateLocation" placeholder="City, area" />
           </div>
+          <!-- 🔧 NEW: Image URL field -->
+          <div class="field">
+            <label>Cover Image URL (optional)</label>
+            <input id="donateImage" placeholder="Paste an image URL or leave blank for template image" />
+          </div>
           <div style="display:flex;gap:10px;margin-top:8px">
             <button class="primary-btn" id="postDonateBtn">Post Donation</button>
           </div>
-          <p style="color:var(--muted);font-size:13px;margin-top:10px">Donations are posted as free listings for others to claim.</p>
+          <p style="color:var(--muted);font-size:13px;margin-top:10px">Donations are posted as free listings for others
+            to claim.</p>
         </div>
       </section>
 
       <!-- LOGIN / SIGNUP MODAL -->
-      <div id="authModal" class="modal" aria-hidden="true" role="dialog" aria-modal="true" style="max-width:480px;height:auto;">
+      <div id="authModal" class="modal" aria-hidden="true" role="dialog" aria-modal="true"
+        style="max-width:480px;height:auto;">
         <div class="modal-header">
           <div style="font-weight:700">Login / Sign up</div>
           <div><button class="secondary-btn" id="closeAuth">Close</button></div>
@@ -154,7 +167,8 @@
           <div id="authForm">
             <div class="field"><label>Email</label><input id="authEmail" placeholder="you@example.com" /></div>
             <div class="field"><label>Username</label><input id="authUser" placeholder="choose a username" /></div>
-            <div class="field"><label>Password</label><input id="authPass" type="password" placeholder="password" /></div>
+            <div class="field"><label>Password</label><input id="authPass" type="password" placeholder="password" />
+            </div>
 
             <div style="display:flex;gap:8px">
               <button class="primary-btn" id="signupBtn">Create account</button>
@@ -193,20 +207,20 @@
 
 
   <script>
-document.addEventListener("DOMContentLoaded", async () => {
-  try {
-    const res = await fetch("/api/books");
-    const books = await res.json();
+    document.addEventListener("DOMContentLoaded", async () => {
+      try {
+        const res = await fetch("/api/books");
+        const books = await res.json();
 
-    const container = document.getElementById("homeGrid");
-    if (!container) return;
+        const container = document.getElementById("homeGrid");
+        if (!container) return;
 
-    if (books.length === 0) {
-      container.innerHTML = "<p>No books listed yet.</p>";
-      return;
-    }
+        if (books.length === 0) {
+          container.innerHTML = "<p>No books listed yet.</p>";
+          return;
+        }
 
-    container.innerHTML = books.map(book => `
+        container.innerHTML = books.map(book => `
       <div class="book-card">
         <img src="${book.image || '/default.jpg'}" alt="${book.title}">
         <h3>${book.title}</h3>
@@ -215,24 +229,24 @@ document.addEventListener("DOMContentLoaded", async () => {
         <p>Seller: ${book.seller}</p>
       </div>
     `).join("");
-  } catch (err) {
-    console.error("Error loading books:", err);
-  }
-});
-</script>
+      } catch (err) {
+        console.error("Error loading books:", err);
+      }
+    });
+  </script>
 
 
-<script>
-async function loadBooks() {
-  try {
-    const res = await fetch("/api/books");
-    const books = await res.json();
+  <script>
+    async function loadBooks() {
+      try {
+        const res = await fetch("/api/books");
+        const books = await res.json();
 
-    // Home page container
-    const homeGrid = document.getElementById("homeGrid");
-    if (homeGrid) {
-      homeGrid.innerHTML = books.length
-        ? books.map(book => `
+        // Home page container
+        const homeGrid = document.getElementById("homeGrid");
+        if (homeGrid) {
+          homeGrid.innerHTML = books.length
+            ? books.map(book => `
             <div class="book-card">
               <img src="${book.image || '/default.jpg'}" alt="${book.title}">
               <h3>${book.title}</h3>
@@ -241,14 +255,14 @@ async function loadBooks() {
               <p>Seller: ${book.seller}</p>
             </div>
           `).join("")
-        : "<p>No books listed yet.</p>";
-    }
+            : "<p>No books listed yet.</p>";
+        }
 
-    // Buy page container
-    const buyGrid = document.getElementById("buyGrid");
-    if (buyGrid) {
-      buyGrid.innerHTML = books.length
-        ? books.map(book => `
+        // Buy page container
+        const buyGrid = document.getElementById("buyGrid");
+        if (buyGrid) {
+          buyGrid.innerHTML = books.length
+            ? books.map(book => `
             <div class="book-card">
               <img src="${book.image || '/default.jpg'}" alt="${book.title}">
               <h3>${book.title}</h3>
@@ -259,20 +273,21 @@ async function loadBooks() {
               <p>Seller: ${book.seller}</p>
             </div>
           `).join("")
-        : "<p>No books available for sale.</p>";
+            : "<p>No books available for sale.</p>";
+        }
+
+      } catch (err) {
+        console.error("Error loading books:", err);
+      }
     }
 
-  } catch (err) {
-    console.error("Error loading books:", err);
-  }
-}
-
-// Load books once the DOM is ready
-document.addEventListener("DOMContentLoaded", loadBooks);
-</script>
+    // Load books once the DOM is ready
+    document.addEventListener("DOMContentLoaded", loadBooks);
+  </script>
 
 
 
   <script src="script.js" defer></script>
 </body>
+
 </html>

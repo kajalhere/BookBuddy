@@ -1,15 +1,19 @@
 <!doctype html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>BookBuddy — Donate</title>
 
   <!-- fonts -->
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=Inter:wght@300;400;600&display=swap"
+    rel="stylesheet">
 
   <link rel="stylesheet" href="style.css" />
 </head>
+
 <body data-page="donate">
   <div class="page-wrap">
     <div class="site">
@@ -18,8 +22,8 @@
         <div style="display:flex;align-items:center;gap:12px">
           <div class="logo" aria-hidden="true">
             <svg viewBox="0 0 100 80" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-              <rect x="6" y="8" width="22" height="62" rx="3" fill="#d9443f"/>
-              <rect x="36" y="8" width="22" height="62" rx="3" fill="#d9443f" opacity="0.95"/>
+              <rect x="6" y="8" width="22" height="62" rx="3" fill="#d9443f" />
+              <rect x="36" y="8" width="22" height="62" rx="3" fill="#d9443f" opacity="0.95" />
             </svg>
             <h1>BookBuddy</h1>
           </div>
@@ -50,7 +54,8 @@
         </div>
 
         <div style="max-width:900px;margin:0 auto;text-align:center">
-          <p style="color:var(--muted);margin:0 0 12px">Search or browse books below. Click a book to chat with the seller.</p>
+          <p style="color:var(--muted);margin:0 0 12px">Search or browse books below. Click a book to chat with the
+            seller.</p>
         </div>
 
         <h3 class="section-title">Explore Books</h3>
@@ -112,7 +117,8 @@
             <button class="secondary-btn" id="clearSell">Clear</button>
           </div>
 
-          <p style="color:var(--muted);font-size:13px;margin-top:10px">You must be logged in to post. If not logged in you will be prompted to login/signup.</p>
+          <p style="color:var(--muted);font-size:13px;margin-top:10px">You must be logged in to post. If not logged in
+            you will be prompted to login/signup.</p>
         </div>
       </section>
 
@@ -132,10 +138,16 @@
             <label>Pickup Location (optional)</label>
             <input id="donateLocation" placeholder="City, area" />
           </div>
+          <!-- 🔧 NEW: Image URL field -->
+          <div class="field">
+            <label>Cover Image URL (optional)</label>
+            <input id="donateImage" placeholder="Paste an image URL or leave blank for template image" />
+          </div>
           <div style="display:flex;gap:10px;margin-top:8px">
             <button class="primary-btn" id="postDonateBtn">Post Donation</button>
           </div>
-          <p style="color:var(--muted);font-size:13px;margin-top:10px">Donations are posted as free listings for others to claim.</p>
+          <p style="color:var(--muted);font-size:13px;margin-top:10px">Donations are posted as free listings for others
+            to claim.</p>
         </div>
 
         <hr style="margin: 30px 0; border: none; border-top: 1px solid #ccc;">
@@ -144,7 +156,8 @@
       </section>
 
       <!-- LOGIN / SIGNUP MODAL -->
-      <div id="authModal" class="modal" aria-hidden="true" role="dialog" aria-modal="true" style="max-width:480px;height:auto;">
+      <div id="authModal" class="modal" aria-hidden="true" role="dialog" aria-modal="true"
+        style="max-width:480px;height:auto;">
         <div class="modal-header">
           <div style="font-weight:700">Login / Sign up</div>
           <div><button class="secondary-btn" id="closeAuth">Close</button></div>
@@ -154,7 +167,8 @@
           <div id="authForm">
             <div class="field"><label>Email</label><input id="authEmail" placeholder="you@example.com" /></div>
             <div class="field"><label>Username</label><input id="authUser" placeholder="choose a username" /></div>
-            <div class="field"><label>Password</label><input id="authPass" type="password" placeholder="password" /></div>
+            <div class="field"><label>Password</label><input id="authPass" type="password" placeholder="password" />
+            </div>
 
             <div style="display:flex;gap:8px">
               <button class="primary-btn" id="signupBtn">Create account</button>
@@ -189,61 +203,62 @@
 
   <!-- 📚 Added Donation Script -->
   <script>
-  async function loadDonations() {
-    try {
-      const res = await fetch('/api/donations');
-      const donations = await res.json();
-      const list = document.getElementById('donation-list');
-      list.innerHTML = '';
+    async function loadDonations() {
+      try {
+        const res = await fetch('/api/donations');
+        const donations = await res.json();
+        const list = document.getElementById('donation-list');
+        list.innerHTML = '';
 
-      if (!donations.length) {
-        list.innerHTML = '<p style="color:gray;">No donations yet. Be the first to donate!</p>';
-        return;
-      }
+        if (!donations.length) {
+          list.innerHTML = '<p style="color:gray;">No donations yet. Be the first to donate!</p>';
+          return;
+        }
 
-      donations.forEach(d => {
-        const card = document.createElement('div');
-        card.className = 'donation-card';
-        card.innerHTML = `
+        donations.forEach(d => {
+          const card = document.createElement('div');
+          card.className = 'donation-card';
+          card.innerHTML = `
           <img src="${d.image || 'https://picsum.photos/200'}" alt="${d.title}">
           <h4>${d.title}</h4>
           <p>${d.meta || 'Unknown Author/Publisher'}</p>
           <p><strong>📍 ${d.location || 'N/A'}</strong></p>
           <p><em>Donor: ${d.donor || 'Anonymous'}</em></p>
         `;
-        list.appendChild(card);
-      });
-    } catch (err) {
-      console.error('Error loading donations:', err);
+          list.appendChild(card);
+        });
+      } catch (err) {
+        console.error('Error loading donations:', err);
+      }
     }
-  }
 
-  document.getElementById('postDonateBtn').addEventListener('click', async () => {
-    const title = document.getElementById('donateTitle').value.trim();
-    const meta = document.getElementById('donateMeta').value.trim();
-    const location = document.getElementById('donateLocation').value.trim();
+    document.getElementById('postDonateBtn').addEventListener('click', async () => {
+      const title = document.getElementById('donateTitle').value.trim();
+      const meta = document.getElementById('donateMeta').value.trim();
+      const location = document.getElementById('donateLocation').value.trim();
 
-    if (!title) return alert('Please enter a book title');
+      if (!title) return alert('Please enter a book title');
 
-    const res = await fetch('/api/donations', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, meta, location })
+      const res = await fetch('/api/donations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, meta, location })
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        alert('Donation posted successfully!');
+        document.getElementById('donateTitle').value = '';
+        document.getElementById('donateMeta').value = '';
+        document.getElementById('donateLocation').value = '';
+        loadDonations();
+      } else {
+        alert('Error posting donation.');
+      }
     });
 
-    const data = await res.json();
-    if (data.success) {
-      alert('Donation posted successfully!');
-      document.getElementById('donateTitle').value = '';
-      document.getElementById('donateMeta').value = '';
-      document.getElementById('donateLocation').value = '';
-      loadDonations();
-    } else {
-      alert('Error posting donation.');
-    }
-  });
-
-  document.addEventListener('DOMContentLoaded', loadDonations);
+    document.addEventListener('DOMContentLoaded', loadDonations);
   </script>
 </body>
+
 </html>
