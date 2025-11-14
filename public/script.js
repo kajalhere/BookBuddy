@@ -508,6 +508,7 @@ async function sendChatMessage() {
   if (!input) return;
   const text = input.value.trim();
   if (!text) return;
+  input.value = '';  // Clear input immediately
   if (!currentUser) { openAuth(); return; }
   if (!activeChatId) return alert('No active chat');
 
@@ -542,18 +543,19 @@ async function sendChatMessage() {
     if (!postRes.ok) throw new Error(data.error || 'Failed to send message');
     
     // Clear input FIRST
-    input.value = '';
+    // input.value = '';
     
-    // Immediately update UI without waiting for server poll
-    const area = $('#messagesArea');
-    if (area) {
-      const el = document.createElement('div');
-      el.className = 'bubble me';
-      el.innerHTML = `<div style="font-size:13px;margin-bottom:6px;color:var(--muted)">${escapeHtml(currentUser.username)} • ${new Date().toLocaleString()}</div><div>${escapeHtml(text)}</div>`;
-      area.appendChild(el);
-      area.scrollTop = area.scrollHeight;
-    }
-    
+    // // Immediately update UI without waiting for server poll
+    // const area = $('#messagesArea');
+    // if (area) {
+    //   const el = document.createElement('div');
+    //   el.className = 'bubble me';
+    //   el.innerHTML = `<div style="font-size:13px;margin-bottom:6px;color:var(--muted)">${escapeHtml(currentUser.username)} • ${new Date().toLocaleString()}</div><div>${escapeHtml(text)}</div>`;
+    //   area.appendChild(el);
+    //   area.scrollTop = area.scrollHeight;
+    // }
+    // Reload messages from server to show the new message
+await loadChatMessages();
     console.log('✅ Message sent successfully');
     
   } catch (err) {
