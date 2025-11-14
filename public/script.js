@@ -363,6 +363,78 @@ function openChatForBook(bookId, sellerUsername) {
   chatPollInterval = setInterval(loadChatMessages, CHAT_REFRESH_MS);
 }
 
+// 🔧 NEW: Show all user's chats when clicking floating button
+async function openGlobalChats() {
+  if (!currentUser) { 
+    openAuth(); 
+    return; 
+  }
+  
+  try {
+    const res = await fetch(`${API_BASE}/api/chats`, { credentials: 'include' });
+    if (!res.ok) throw new Error('Failed to fetch chats');
+    const allChats = await res.json();
+    
+    // Filter chats where current user is a participant
+    const userChats = allChats.filter(chat => {
+      try {
+        const participants = JSON.parse(chat.participants || '[]');
+        return participants.includes(currentUser.username);
+      } catch {
+        return false;
+      }
+    });
+    
+    const area = $('#messagesArea');
+    const title = $('#chatTitle');
+    
+    if (!area || !title) return;
+    
+    title.textContent = 'Your Chats';
+    area.innerHTML = '';
+    
+    if (userChats.length === 0) {
+      area.innerHTML = '<div style="color:var(--muted);padding:12px;text-align:center">No chats yet. Click "Chat" on any book to start a conversation!</div>';
+    } else {
+      userChats.forEach(chat => {
+        const participants = JSON.parse(chat.participants || '[]');
+        const otherUser = participants.find(p => p !== currentUser.username) || 'Unknown';
+        
+        let messages = [];
+        try { messages = JSON.parse(chat.messages || '[]'); } catch {}
+        
+        const lastMsg = messages[messages.length - 1];
+        const preview = lastMsg ? lastMsg.text.substring(0, 50) + (lastMsg.text.length > 50 ? '...' : '') : 'No messages';
+        
+        const chatItem = document.createElement('div');
+        chatItem.style.cssText = 'padding:12px;margin:8px 0;background:#f9f9f9;border-radius:8px;cursor:pointer;border:1px solid #eee';
+        chatItem.innerHTML = `
+          <div style="font-weight:600;margin-bottom:4px">${escapeHtml(otherUser)}</div>
+          <div style="font-size:13px;color:var(--muted)">${escapeHtml(preview)}</div>
+        `;
+        
+        chatItem.addEventListener('click', () => {
+          openChatForBook(null, otherUser);
+        });
+        
+        area.appendChild(chatItem);
+      });
+    }
+    
+    $('#chatModal')?.classList.add('open');
+    
+    // Stop auto-refresh when in chat list view
+    if (chatPollInterval) {
+      clearInterval(chatPollInterval);
+      chatPollInterval = null;
+    }
+    
+  } catch (err) {
+    console.error('openGlobalChats error', err);
+    alert('Failed to load chats');
+  }
+}
+
 async function loadChatMessages() {
   if (!activeChatId) return;
   try {
@@ -391,6 +463,46 @@ async function loadChatMessages() {
   }
 }
 
+// async function sendChatMessage() {
+//   const input = $('#chatInput');
+//   if (!input) return;
+//   const text = input.value.trim();
+//   if (!text) return;
+//   if (!currentUser) { openAuth(); return; }
+//   if (!activeChatId) return alert('No active chat');
+
+//   try {
+//     // fetch existing chat
+//     const res = await fetch(`${API_BASE}/api/chats`, { credentials: 'include' });
+//     const rows = await res.json();
+//     const existing = rows.find(r => r.chat_id === activeChatId);
+//     let messages = [];
+//     if (existing && existing.messages) {
+//       try { messages = JSON.parse(existing.messages); } catch { messages = []; }
+//     }
+//     const newMsg = { sender: currentUser.username, text, time: Date.now() };
+//     messages.push(newMsg);
+
+//     const postRes = await fetch(`${API_BASE}/api/chats`, {
+//       method: 'POST',
+//       credentials: 'include',
+//       headers: { 'Content-Type': 'application/json' },
+//       body: JSON.stringify({
+//         chat_id: activeChatId,
+//         participants: [currentUser.username, activeChatPartner],
+//         messages
+//       })
+//     });
+//     const data = await postRes.json();
+//     if (!postRes.ok) throw new Error(data.error || 'Failed to send message');
+//     input.value = '';
+//     await loadChatMessages();
+//   } catch (err) {
+//     console.error('sendChatMessage error', err);
+//     alert('Failed to send message: ' + (err.message || err));
+//   }
+// }
+
 async function sendChatMessage() {
   const input = $('#chatInput');
   if (!input) return;
@@ -400,17 +512,21 @@ async function sendChatMessage() {
   if (!activeChatId) return alert('No active chat');
 
   try {
-    // fetch existing chat
+    // Fetch existing messages
     const res = await fetch(`${API_BASE}/api/chats`, { credentials: 'include' });
     const rows = await res.json();
     const existing = rows.find(r => r.chat_id === activeChatId);
+    
     let messages = [];
     if (existing && existing.messages) {
       try { messages = JSON.parse(existing.messages); } catch { messages = []; }
     }
+    
+    // Add new message
     const newMsg = { sender: currentUser.username, text, time: Date.now() };
     messages.push(newMsg);
 
+    // Save to server
     const postRes = await fetch(`${API_BASE}/api/chats`, {
       method: 'POST',
       credentials: 'include',
@@ -421,10 +537,25 @@ async function sendChatMessage() {
         messages
       })
     });
+    
     const data = await postRes.json();
     if (!postRes.ok) throw new Error(data.error || 'Failed to send message');
+    
+    // Clear input FIRST
     input.value = '';
-    await loadChatMessages();
+    
+    // Immediately update UI without waiting for server poll
+    const area = $('#messagesArea');
+    if (area) {
+      const el = document.createElement('div');
+      el.className = 'bubble me';
+      el.innerHTML = `<div style="font-size:13px;margin-bottom:6px;color:var(--muted)">${escapeHtml(currentUser.username)} • ${new Date().toLocaleString()}</div><div>${escapeHtml(text)}</div>`;
+      area.appendChild(el);
+      area.scrollTop = area.scrollHeight;
+    }
+    
+    console.log('✅ Message sent successfully');
+    
   } catch (err) {
     console.error('sendChatMessage error', err);
     alert('Failed to send message: ' + (err.message || err));
@@ -456,6 +587,7 @@ function attachUIHandlers() {
   // Chat UI
   $('#sendChatBtn')?.addEventListener('click', sendChatMessage);
   $('#closeChat')?.addEventListener('click', closeChatPopup);
+  $('#openChats')?.addEventListener('click', openGlobalChats);  // ← ADD THIS LINE
 
   // Search handlers (if present)
   $('#searchBtn')?.addEventListener('click', () => {
