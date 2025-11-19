@@ -422,12 +422,17 @@ async function openGlobalChats() {
 async function loadChatMessages() {
   if (!activeChatId) return;
   
+  console.log('🟢 Loading messages for chat:', activeChatId);
+  
   try {
     const res = await fetch(`${API_BASE}/api/chats`, { credentials: 'include' });
     if (!res.ok) throw new Error('Failed to fetch chats');
     
     const allChats = await res.json();
+    console.log('🟢 All chats:', allChats);
+    
     const chat = allChats.find(r => r.chat_id === activeChatId);
+    console.log('🟢 Found chat:', chat);
     
     const area = $('#messagesArea');
     if (!area) return;
@@ -437,15 +442,18 @@ async function loadChatMessages() {
     if (chat && chat.messages) {
       let messages = [];
       try { 
-        messages = JSON.parse(chat.messages); 
+        messages = JSON.parse(chat.messages);
+        console.log('🟢 Parsed messages:', messages);
       } catch (parseErr) { 
-        console.warn('Failed to parse messages:', parseErr);
+        console.warn('⚠️ Failed to parse messages:', parseErr);
         messages = []; 
       }
       
       if (messages.length === 0) {
+        console.log('🟡 No messages in array');
         area.innerHTML = '<div style="color:var(--muted);padding:12px">No messages yet – start the conversation!</div>';
       } else {
+        console.log('🟢 Displaying', messages.length, 'messages');
         messages.forEach(m => {
           const el = document.createElement('div');
           el.className = 'bubble ' + ((m.sender === currentUser.username) ? 'me' : 'them');
@@ -455,6 +463,7 @@ async function loadChatMessages() {
         area.scrollTop = area.scrollHeight;
       }
     } else {
+      console.log('🟡 Chat not found in database');
       area.innerHTML = '<div style="color:var(--muted);padding:12px">No messages yet – start the conversation!</div>';
     }
     
