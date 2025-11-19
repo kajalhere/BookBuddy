@@ -1,5 +1,5 @@
 /************************************************************************
-📚 BookBuddy — Unified frontend (SPA) wired to Railway MySQL backend
+📚 BookBuddy – Unified frontend (SPA) wired to Railway MySQL backend
  API_BASE: uses window.location.origin so it works on Railway or locally
 ************************************************************************/
 
@@ -41,9 +41,7 @@ function initNavHandlers() {
     });
   });
 
-
-
-  // 🔧 FIX: Add listeners for the red CTA buttons on home page
+  // FIX: Add listeners for the red CTA buttons on home page
   $$('button[data-route]').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.preventDefault();
@@ -87,7 +85,6 @@ async function updateAuthState() {
   }
 }
 
-/* Signup expects { username, email, password } in body (server uses these) */
 async function doSignup() {
   const username = $('#authUser')?.value.trim();
   const email = $('#authEmail')?.value.trim();
@@ -113,7 +110,6 @@ async function doSignup() {
   }
 }
 
-/* Login expects { usernameOrEmail, password } in body (server route uses that) */
 async function doLogin() {
   const usernameOrEmail = $('#authUser')?.value.trim() || $('#authEmail')?.value.trim();
   const password = $('#authPass')?.value;
@@ -132,7 +128,7 @@ async function doLogin() {
     closeAuth();
     updateAuthState();
     alert('Logged in as ' + currentUser.username);
-    await fetchBooks(); // refresh book listing / seller info
+    await fetchBooks();
   } catch (err) {
     console.error('Login error', err);
     alert('Login failed: ' + (err.message || err));
@@ -150,7 +146,6 @@ async function doLogout() {
   alert('Logged out');
 }
 
-/* UI helpers for auth modal */
 function openAuth() { $('#authModal')?.classList.add('open'); }
 function closeAuth() { $('#authModal')?.classList.remove('open'); }
 
@@ -196,7 +191,6 @@ function renderGrid(containerId, books) {
     container.appendChild(div);
   });
 
-  // attach listeners
   container.querySelectorAll('.btn-chat').forEach(btn => btn.addEventListener('click', (e) => {
     const bookId = e.currentTarget.dataset.id;
     const seller = e.currentTarget.dataset.seller;
@@ -220,7 +214,6 @@ async function fetchBooks() {
     return books;
   } catch (err) {
     console.error('fetchBooks error', err);
-    // nothing else to do — show empty state in renderGrid
     renderGrid('homeGrid', []);
     renderGrid('buyGrid', []);
     return [];
@@ -267,7 +260,6 @@ async function fetchDonations() {
     const res = await fetch(`${API_BASE}/api/donations`, { credentials: 'include' });
     if (!res.ok) throw new Error('Failed to fetch donations');
     const rows = await res.json();
-    // you can render donations similarly if you have a donations area
     return rows;
   } catch (err) {
     console.error('fetchDonations error', err);
@@ -279,11 +271,10 @@ async function postDonation() {
   const title = $('#donateTitle')?.value.trim();
   const meta = $('#donateMeta')?.value.trim();
   const location = $('#donateLocation')?.value.trim();
-  let image = $('#donateImage')?.value.trim(); // 🔧 NEW: Read from image field
+  let image = $('#donateImage')?.value.trim();
 
   if (!title) { alert('Please add the book title'); return; }
 
-  // Use provided image or generate placeholder
   if (!image) image = `https://picsum.photos/seed/${encodeURIComponent(title)}/400/600`;
   
   const payload = { title, meta, location, image };
@@ -301,11 +292,9 @@ async function postDonation() {
     $('#donateTitle').value = '';
     $('#donateMeta').value = ''; 
     $('#donateLocation').value = '';
-    $('#donateImage').value = ''; // 🔧 NEW: Clear image field
+    $('#donateImage').value = '';
     alert('Donation posted (free listing).');
-    // showPage('buy');
 
-    //Reload donations if on donate page
     if(typeof loadDonations === 'function') loadDonations();
   } catch (err) {
     console.error('postDonation error', err);
@@ -318,7 +307,6 @@ async function postDonation() {
    --------------------------- */
 function openBuyFlow(bookId) {
   if (!currentUser) { if (confirm('You must be logged in to buy. Login now?')) openAuth(); return; }
-  // simple demo flow
   const bookCard = document.querySelector(`.btn-buy[data-id="${bookId}"]`);
   const title = bookCard ? bookCard.closest('.card').querySelector('.title')?.textContent : 'this item';
   if (!confirm(`Buy "${title}" for demo?`)) return;
@@ -347,11 +335,10 @@ async function deleteBook(id) {
 }
 
 /* ---------------------------
-   Chat — Enhanced (logged-in users, DB-backed)
+   Chat – Enhanced (FIXED VERSION)
    --------------------------- */
 
 function openChatForBook(bookId, sellerUsername) {
-  // ensure user logged in
   if (!currentUser) { openAuth(); return; }
   activeChatPartner = sellerUsername;
   const participants = [currentUser.username, sellerUsername].sort();
@@ -363,7 +350,6 @@ function openChatForBook(bookId, sellerUsername) {
   chatPollInterval = setInterval(loadChatMessages, CHAT_REFRESH_MS);
 }
 
-// 🔧 NEW: Show all user's chats when clicking floating button
 async function openGlobalChats() {
   if (!currentUser) { 
     openAuth(); 
@@ -375,7 +361,6 @@ async function openGlobalChats() {
     if (!res.ok) throw new Error('Failed to fetch chats');
     const allChats = await res.json();
     
-    // Filter chats where current user is a participant
     const userChats = allChats.filter(chat => {
       try {
         const participants = JSON.parse(chat.participants || '[]');
@@ -423,7 +408,6 @@ async function openGlobalChats() {
     
     $('#chatModal')?.classList.add('open');
     
-    // Stop auto-refresh when in chat list view
     if (chatPollInterval) {
       clearInterval(chatPollInterval);
       chatPollInterval = null;
@@ -437,97 +421,96 @@ async function openGlobalChats() {
 
 async function loadChatMessages() {
   if (!activeChatId) return;
+  
   try {
     const res = await fetch(`${API_BASE}/api/chats`, { credentials: 'include' });
     if (!res.ok) throw new Error('Failed to fetch chats');
-    const rows = await res.json();
-    const chat = rows.find(r => r.chat_id === activeChatId);
+    
+    const allChats = await res.json();
+    const chat = allChats.find(r => r.chat_id === activeChatId);
+    
     const area = $('#messagesArea');
     if (!area) return;
+    
     area.innerHTML = '';
+    
     if (chat && chat.messages) {
       let messages = [];
-      try { messages = JSON.parse(chat.messages || '[]'); } catch { messages = []; }
-      messages.forEach(m => {
-        const el = document.createElement('div');
-        el.className = 'bubble ' + ((m.sender === (currentUser && currentUser.username)) ? 'me' : 'them');
-        el.innerHTML = `<div style="font-size:13px;margin-bottom:6px;color:var(--muted)">${escapeHtml(m.sender)} • ${new Date(m.time || m.ts || Date.now()).toLocaleString()}</div><div>${escapeHtml(m.text)}</div>`;
-        area.appendChild(el);
-      });
-      area.scrollTop = area.scrollHeight;
+      try { 
+        messages = JSON.parse(chat.messages); 
+      } catch (parseErr) { 
+        console.warn('Failed to parse messages:', parseErr);
+        messages = []; 
+      }
+      
+      if (messages.length === 0) {
+        area.innerHTML = '<div style="color:var(--muted);padding:12px">No messages yet – start the conversation!</div>';
+      } else {
+        messages.forEach(m => {
+          const el = document.createElement('div');
+          el.className = 'bubble ' + ((m.sender === currentUser.username) ? 'me' : 'them');
+          el.innerHTML = `<div style="font-size:13px;margin-bottom:6px;color:var(--muted)">${escapeHtml(m.sender)} • ${new Date(m.time || Date.now()).toLocaleString()}</div><div>${escapeHtml(m.text)}</div>`;
+          area.appendChild(el);
+        });
+        area.scrollTop = area.scrollHeight;
+      }
     } else {
-      area.innerHTML = '<div style="color:var(--muted);padding:12px">No messages yet — start the conversation!</div>';
+      area.innerHTML = '<div style="color:var(--muted);padding:12px">No messages yet – start the conversation!</div>';
     }
+    
   } catch (err) {
-    console.error('loadChatMessages error', err);
+    console.error('❌ loadChatMessages error:', err);
   }
 }
-
-// async function sendChatMessage() {
-//   const input = $('#chatInput');
-//   if (!input) return;
-//   const text = input.value.trim();
-//   if (!text) return;
-//   if (!currentUser) { openAuth(); return; }
-//   if (!activeChatId) return alert('No active chat');
-
-//   try {
-//     // fetch existing chat
-//     const res = await fetch(`${API_BASE}/api/chats`, { credentials: 'include' });
-//     const rows = await res.json();
-//     const existing = rows.find(r => r.chat_id === activeChatId);
-//     let messages = [];
-//     if (existing && existing.messages) {
-//       try { messages = JSON.parse(existing.messages); } catch { messages = []; }
-//     }
-//     const newMsg = { sender: currentUser.username, text, time: Date.now() };
-//     messages.push(newMsg);
-
-//     const postRes = await fetch(`${API_BASE}/api/chats`, {
-//       method: 'POST',
-//       credentials: 'include',
-//       headers: { 'Content-Type': 'application/json' },
-//       body: JSON.stringify({
-//         chat_id: activeChatId,
-//         participants: [currentUser.username, activeChatPartner],
-//         messages
-//       })
-//     });
-//     const data = await postRes.json();
-//     if (!postRes.ok) throw new Error(data.error || 'Failed to send message');
-//     input.value = '';
-//     await loadChatMessages();
-//   } catch (err) {
-//     console.error('sendChatMessage error', err);
-//     alert('Failed to send message: ' + (err.message || err));
-//   }
-// }
 
 async function sendChatMessage() {
   const input = $('#chatInput');
   if (!input) return;
+  
   const text = input.value.trim();
   if (!text) return;
-  input.value = '';  // Clear input immediately
-  if (!currentUser) { openAuth(); return; }
-  if (!activeChatId) return alert('No active chat');
+  
+  // Clear input IMMEDIATELY
+  input.value = '';
+  
+  if (!currentUser) { 
+    openAuth(); 
+    return; 
+  }
+  
+  if (!activeChatId) {
+    alert('No active chat');
+    return;
+  }
 
   try {
-    // Fetch existing messages
+    // 1. Fetch existing chat data
     const res = await fetch(`${API_BASE}/api/chats`, { credentials: 'include' });
-    const rows = await res.json();
-    const existing = rows.find(r => r.chat_id === activeChatId);
+    if (!res.ok) throw new Error('Failed to fetch chats');
     
+    const allChats = await res.json();
+    const existing = allChats.find(r => r.chat_id === activeChatId);
+    
+    // 2. Parse existing messages
     let messages = [];
     if (existing && existing.messages) {
-      try { messages = JSON.parse(existing.messages); } catch { messages = []; }
+      try { 
+        messages = JSON.parse(existing.messages); 
+      } catch (parseErr) { 
+        console.warn('Failed to parse existing messages:', parseErr);
+        messages = []; 
+      }
     }
     
-    // Add new message
-    const newMsg = { sender: currentUser.username, text, time: Date.now() };
+    // 3. Add new message
+    const newMsg = { 
+      sender: currentUser.username, 
+      text: text, 
+      time: Date.now() 
+    };
     messages.push(newMsg);
 
-    // Save to server
+    // 4. Save to server
     const postRes = await fetch(`${API_BASE}/api/chats`, {
       method: 'POST',
       credentials: 'include',
@@ -535,36 +518,34 @@ async function sendChatMessage() {
       body: JSON.stringify({
         chat_id: activeChatId,
         participants: [currentUser.username, activeChatPartner],
-        messages
+        messages: messages
       })
     });
     
-    const data = await postRes.json();
-    if (!postRes.ok) throw new Error(data.error || 'Failed to send message');
+    if (!postRes.ok) {
+      const errorData = await postRes.json();
+      throw new Error(errorData.error || 'Failed to send message');
+    }
     
-    // Clear input FIRST
-    // input.value = '';
+    // 5. Update UI immediately
+    const area = $('#messagesArea');
+    if (area) {
+      const el = document.createElement('div');
+      el.className = 'bubble me';
+      el.innerHTML = `<div style="font-size:13px;margin-bottom:6px;color:var(--muted)">${escapeHtml(currentUser.username)} • ${new Date().toLocaleString()}</div><div>${escapeHtml(text)}</div>`;
+      area.appendChild(el);
+      area.scrollTop = area.scrollHeight;
+    }
     
-    // // Immediately update UI without waiting for server poll
-    // const area = $('#messagesArea');
-    // if (area) {
-    //   const el = document.createElement('div');
-    //   el.className = 'bubble me';
-    //   el.innerHTML = `<div style="font-size:13px;margin-bottom:6px;color:var(--muted)">${escapeHtml(currentUser.username)} • ${new Date().toLocaleString()}</div><div>${escapeHtml(text)}</div>`;
-    //   area.appendChild(el);
-    //   area.scrollTop = area.scrollHeight;
-    // }
-    // Reload messages from server to show the new message
-await loadChatMessages();
     console.log('✅ Message sent successfully');
     
   } catch (err) {
-    console.error('sendChatMessage error', err);
+    console.error('❌ sendChatMessage error:', err);
     alert('Failed to send message: ' + (err.message || err));
+    input.value = text;
   }
 }
 
-/* Close chat */
 function closeChatPopup() {
   $('#chatModal')?.classList.remove('open');
   if (chatPollInterval) { clearInterval(chatPollInterval); chatPollInterval = null; }
@@ -576,22 +557,17 @@ function closeChatPopup() {
    Wiring initial event listeners
    --------------------------- */
 function attachUIHandlers() {
-  // Auth
   $('#signupBtn')?.addEventListener('click', doSignup);
   $('#loginExistingBtn')?.addEventListener('click', doLogin);
   $('#closeAuth')?.addEventListener('click', closeAuth);
 
-  // Post book
   $('#postListingBtn')?.addEventListener('click', postBook);
-  // Post donation
   $('#postDonateBtn')?.addEventListener('click', postDonation);
 
-  // Chat UI
   $('#sendChatBtn')?.addEventListener('click', sendChatMessage);
   $('#closeChat')?.addEventListener('click', closeChatPopup);
-  $('#openChats')?.addEventListener('click', openGlobalChats);  // ← ADD THIS LINE
+  $('#openChats')?.addEventListener('click', openGlobalChats);
 
-  // Search handlers (if present)
   $('#searchBtn')?.addEventListener('click', () => {
     const q = $('#globalSearch')?.value || '';
     searchAndShow(q);
@@ -603,11 +579,8 @@ function attachUIHandlers() {
   });
 }
 
-/* Search helper (client side) */
 function searchAndShow(q) {
   q = (q || '').trim().toLowerCase();
-  // simple re-use: fetch current rendered books from buyGrid DOM (or call fetchBooks again)
-  // For simplicity, call fetchBooks and filter response
   fetch(`${API_BASE}/api/books`, { credentials: 'include' }).then(r => r.json()).then(books => {
     if (!q) { renderGrid('homeGrid', books.slice(0,4)); renderGrid('buyGrid', books); return; }
     const matched = books.filter(b =>
