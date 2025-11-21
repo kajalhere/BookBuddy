@@ -20,7 +20,7 @@ const CHAT_REFRESH_MS = 4000;
    Helpers: UI / formatting
    --------------------------- */
 function numberWithCommas(x) { return (x == null) ? '0' : x.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
-function escapeHtml(str) { if (!str) return ''; return String(str).replace(/[&<>"']/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m])); }
+function escapeHtml(str) { if (!str) return ''; return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m])); }
 
 /* ---------------------------
    SPA Navigation
@@ -173,7 +173,7 @@ function renderGrid(containerId, books) {
     const div = document.createElement('div');
     div.className = 'card';
     div.innerHTML = `
-      <div class="thumb-wrap"><img src="${escapeHtml(b.image || `https://picsum.photos/seed/${encodeURIComponent(b.title||Date.now())}/400/600`)}" alt="${escapeHtml(b.title)} cover" class="thumb" loading="lazy"></div>
+      <div class="thumb-wrap"><img src="${escapeHtml(b.image || `https://picsum.photos/seed/${encodeURIComponent(b.title || Date.now())}/400/600`)}" alt="${escapeHtml(b.title)} cover" class="thumb" loading="lazy"></div>
       <div class="meta">
         <div class="title">${escapeHtml(b.title)}</div>
         <div class="author">${escapeHtml(b.author)} • ${escapeHtml(b.publisher || '')}</div>
@@ -185,7 +185,7 @@ function renderGrid(containerId, books) {
       <div class="actions">
         <button class="btn-small btn-buy" data-id="${escapeHtml(String(b.id))}">Buy</button>
         <button class="btn-small btn-chat" data-id="${escapeHtml(String(b.id))}" data-seller="${escapeHtml(b.seller || '')}">Chat</button>
-        ${ (currentUser && currentUser.username === b.seller) ? `<button class="btn-small btn-delete" data-id="${escapeHtml(String(b.id))}" style="background:#fff;border:1px solid #d9443f;color:#d9443f">Delete</button>` : '' }
+        ${(currentUser && currentUser.username === b.seller) ? `<button class="btn-small btn-delete" data-id="${escapeHtml(String(b.id))}" style="background:#fff;border:1px solid #d9443f;color:#d9443f">Delete</button>` : ''}
       </div>
     `;
     container.appendChild(div);
@@ -276,7 +276,7 @@ async function postDonation() {
   if (!title) { alert('Please add the book title'); return; }
 
   if (!image) image = `https://picsum.photos/seed/${encodeURIComponent(title)}/400/600`;
-  
+
   const payload = { title, meta, location, image };
 
   try {
@@ -290,12 +290,12 @@ async function postDonation() {
     if (!res.ok) throw new Error(data.error || 'Failed to save donation');
     await fetchDonations();
     $('#donateTitle').value = '';
-    $('#donateMeta').value = ''; 
+    $('#donateMeta').value = '';
     $('#donateLocation').value = '';
     $('#donateImage').value = '';
     alert('Donation posted (free listing).');
 
-    if(typeof loadDonations === 'function') loadDonations();
+    if (typeof loadDonations === 'function') loadDonations();
   } catch (err) {
     console.error('postDonation error', err);
     alert('Failed to post donation: ' + (err.message || err));
@@ -361,14 +361,40 @@ async function openGlobalChats() {
     if (!res.ok) throw new Error('Failed to fetch chats');
     const allChats = await res.json();
     
-    const userChats = allChats.filter(chat => {
+    // Filter chats for current user and remove duplicates
+    const userChatsMap = new Map();
+    
+    allChats.forEach(chat => {
       try {
         const participants = JSON.parse(chat.participants || '[]');
-        return participants.includes(currentUser.username);
-      } catch {
-        return false;
+        if (!participants.includes(currentUser.username)) return;
+        
+        // Get the other user
+        const otherUser = participants.find(p => p !== currentUser.username);
+        if (!otherUser) return;
+        
+        // Parse messages
+        let messages = [];
+        try { 
+          messages = JSON.parse(chat.messages || '[]'); 
+        } catch {}
+        
+        // Only keep the chat with the most messages (latest version)
+        if (!userChatsMap.has(otherUser) || messages.length > userChatsMap.get(otherUser).messageCount) {
+          userChatsMap.set(otherUser, {
+            chat_id: chat.chat_id,
+            otherUser: otherUser,
+            messages: messages,
+            messageCount: messages.length,
+            lastMessage: messages[messages.length - 1]
+          });
+        }
+      } catch (err) {
+        console.warn('Error processing chat:', err);
       }
     });
+    
+    const userChats = Array.from(userChatsMap.values());
     
     const area = $('#messagesArea');
     const title = $('#chatTitle');
@@ -382,24 +408,26 @@ async function openGlobalChats() {
       area.innerHTML = '<div style="color:var(--muted);padding:12px;text-align:center">No chats yet. Click "Chat" on any book to start a conversation!</div>';
     } else {
       userChats.forEach(chat => {
-        const participants = JSON.parse(chat.participants || '[]');
-        const otherUser = participants.find(p => p !== currentUser.username) || 'Unknown';
-        
-        let messages = [];
-        try { messages = JSON.parse(chat.messages || '[]'); } catch {}
-        
-        const lastMsg = messages[messages.length - 1];
+        const lastMsg = chat.lastMessage;
         const preview = lastMsg ? lastMsg.text.substring(0, 50) + (lastMsg.text.length > 50 ? '...' : '') : 'No messages';
         
         const chatItem = document.createElement('div');
-        chatItem.style.cssText = 'padding:12px;margin:8px 0;background:#f9f9f9;border-radius:8px;cursor:pointer;border:1px solid #eee';
+        chatItem.style.cssText = 'padding:12px;margin:8px 0;background:#f9f9f9;border-radius:8px;cursor:pointer;border:1px solid #eee;transition:background 0.2s';
         chatItem.innerHTML = `
-          <div style="font-weight:600;margin-bottom:4px">${escapeHtml(otherUser)}</div>
+          <div style="font-weight:600;margin-bottom:4px">${escapeHtml(chat.otherUser)}</div>
           <div style="font-size:13px;color:var(--muted)">${escapeHtml(preview)}</div>
         `;
         
+        chatItem.addEventListener('mouseenter', () => {
+          chatItem.style.background = '#f0f0f0';
+        });
+        
+        chatItem.addEventListener('mouseleave', () => {
+          chatItem.style.background = '#f9f9f9';
+        });
+        
         chatItem.addEventListener('click', () => {
-          openChatForBook(null, otherUser);
+          openChatForBook(null, chat.otherUser);
         });
         
         area.appendChild(chatItem);
@@ -421,39 +449,39 @@ async function openGlobalChats() {
 
 async function loadChatMessages() {
   if (!activeChatId) return;
-  
+
   console.log('🟢 Loading messages for chat:', activeChatId);
-  
+
   try {
     const res = await fetch(`${API_BASE}/api/chats`, { credentials: 'include' });
     if (!res.ok) throw new Error('Failed to fetch chats');
-    
+
     const allChats = await res.json();
     console.log('🟢 All chats:', allChats);
-    
+
     const chat = allChats.find(r => r.chat_id === activeChatId);
     console.log('🟢 Found chat:', chat);
-    
+
     const area = $('#messagesArea');
     if (!area) return;
-    
+
     area.innerHTML = '';
-    
+
     if (chat && chat.messages) {
       let messages = [];
-      try { 
+      try {
         // Handle both string and object JSON
-        const parsed = typeof chat.messages === 'string' 
-          ? JSON.parse(chat.messages) 
+        const parsed = typeof chat.messages === 'string'
+          ? JSON.parse(chat.messages)
           : chat.messages;
-        
+
         messages = Array.isArray(parsed) ? parsed : [];
         console.log('🟢 Parsed messages:', messages);
-      } catch (parseErr) { 
+      } catch (parseErr) {
         console.warn('⚠️ Failed to parse messages:', parseErr);
-        messages = []; 
+        messages = [];
       }
-      
+
       if (messages.length === 0) {
         console.log('🟡 No messages in array');
         area.innerHTML = '<div style="color:var(--muted);padding:12px">No messages yet – start the conversation!</div>';
@@ -471,7 +499,7 @@ async function loadChatMessages() {
       console.log('🟡 Chat not found in database');
       area.innerHTML = '<div style="color:var(--muted);padding:12px">No messages yet – start the conversation!</div>';
     }
-    
+
   } catch (err) {
     console.error('❌ loadChatMessages error:', err);
   }
@@ -480,17 +508,17 @@ async function loadChatMessages() {
 async function sendChatMessage() {
   const input = $('#chatInput');
   if (!input) return;
-  
+
   const text = input.value.trim();
   if (!text) return;
-  
-  if (!currentUser) { 
+
+  if (!currentUser) {
     alert('Please log in to send messages');
-    openAuth(); 
-    return; 
+    openAuth();
+    return;
   }
-  
-  if (!activeChatId) {
+
+  if (!activeChatId || !activeChatPartner) {
     alert('No active chat');
     return;
   }
@@ -499,39 +527,44 @@ async function sendChatMessage() {
   console.log('📤 Chat ID:', activeChatId);
   console.log('📤 From:', currentUser.username, 'To:', activeChatPartner);
 
+  // Disable input and button while sending
+  input.disabled = true;
+  const sendBtn = $('#sendChatBtn');
+  if (sendBtn) sendBtn.disabled = true;
+
   try {
     // 1. Fetch existing chat data
     const res = await fetch(`${API_BASE}/api/chats`, { credentials: 'include' });
     if (!res.ok) throw new Error('Failed to fetch chats');
-    
+
     const allChats = await res.json();
     const existing = allChats.find(r => r.chat_id === activeChatId);
-    
+
     console.log('📥 Existing chat found:', existing);
-    
+
     // 2. Parse existing messages
     let messages = [];
     if (existing && existing.messages) {
-      try { 
-        const parsed = typeof existing.messages === 'string' 
-          ? JSON.parse(existing.messages) 
+      try {
+        const parsed = typeof existing.messages === 'string'
+          ? JSON.parse(existing.messages)
           : existing.messages;
         messages = Array.isArray(parsed) ? parsed : [];
         console.log('📥 Existing messages:', messages.length);
-      } catch (parseErr) { 
+      } catch (parseErr) {
         console.warn('⚠️ Failed to parse existing messages:', parseErr);
-        messages = []; 
+        messages = [];
       }
     }
-    
+
     // 3. Add new message
-    const newMsg = { 
-      sender: currentUser.username, 
-      text: text, 
-      time: Date.now() 
+    const newMsg = {
+      sender: currentUser.username,
+      text: text,
+      time: Date.now()
     };
     messages.push(newMsg);
-    
+
     console.log('📤 Total messages to save:', messages.length);
 
     // 4. Save to server
@@ -545,18 +578,17 @@ async function sendChatMessage() {
         messages: messages
       })
     });
-    
-    if (!postRes.ok) {
-      const errorData = await postRes.json();
-      throw new Error(errorData.error || 'Failed to send message');
-    }
-    
+
     const saveResult = await postRes.json();
     console.log('✅ Server response:', saveResult);
-    
+
+    if (!postRes.ok || !saveResult.success) {
+      throw new Error(saveResult.error || 'Failed to send message');
+    }
+
     // 5. Clear input ONLY after successful save
     input.value = '';
-    
+
     // 6. Update UI immediately
     const area = $('#messagesArea');
     if (area) {
@@ -566,12 +598,17 @@ async function sendChatMessage() {
       area.appendChild(el);
       area.scrollTop = area.scrollHeight;
     }
-    
+
     console.log('✅ Message sent and displayed successfully');
-    
+
   } catch (err) {
     console.error('❌ sendChatMessage error:', err);
     alert('Failed to send message: ' + (err.message || err));
+  } finally {
+    // Re-enable input and button
+    input.disabled = false;
+    if (sendBtn) sendBtn.disabled = false;
+    input.focus();
   }
 }
 
@@ -594,6 +631,12 @@ function attachUIHandlers() {
   $('#postDonateBtn')?.addEventListener('click', postDonation);
 
   $('#sendChatBtn')?.addEventListener('click', sendChatMessage);
+  $('#chatInput')?.addEventListener('keypress', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendChatMessage();
+  }
+});
   $('#closeChat')?.addEventListener('click', closeChatPopup);
   $('#openChats')?.addEventListener('click', openGlobalChats);
 
@@ -611,14 +654,14 @@ function attachUIHandlers() {
 function searchAndShow(q) {
   q = (q || '').trim().toLowerCase();
   fetch(`${API_BASE}/api/books`, { credentials: 'include' }).then(r => r.json()).then(books => {
-    if (!q) { renderGrid('homeGrid', books.slice(0,4)); renderGrid('buyGrid', books); return; }
+    if (!q) { renderGrid('homeGrid', books.slice(0, 4)); renderGrid('buyGrid', books); return; }
     const matched = books.filter(b =>
       (b.title || '').toLowerCase().includes(q) ||
       (b.author || '').toLowerCase().includes(q) ||
       (b.publisher || '').toLowerCase().includes(q) ||
       (b.seller || '').toLowerCase().includes(q)
     );
-    renderGrid('homeGrid', matched.slice(0,8));
+    renderGrid('homeGrid', matched.slice(0, 8));
     renderGrid('buyGrid', matched);
   }).catch(err => console.error('search error', err));
 }
