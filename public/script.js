@@ -442,7 +442,12 @@ async function loadChatMessages() {
     if (chat && chat.messages) {
       let messages = [];
       try { 
-        messages = JSON.parse(chat.messages);
+        // Handle both string and object JSON
+        const parsed = typeof chat.messages === 'string' 
+          ? JSON.parse(chat.messages) 
+          : chat.messages;
+        
+        messages = Array.isArray(parsed) ? parsed : [];
         console.log('🟢 Parsed messages:', messages);
       } catch (parseErr) { 
         console.warn('⚠️ Failed to parse messages:', parseErr);
@@ -479,10 +484,8 @@ async function sendChatMessage() {
   const text = input.value.trim();
   if (!text) return;
   
-  // Clear input IMMEDIATELY
-  input.value = '';
-  
   if (!currentUser) { 
+    alert('Please log in to send messages');
     openAuth(); 
     return; 
   }
@@ -492,6 +495,10 @@ async function sendChatMessage() {
     return;
   }
 
+  console.log('📤 Sending message:', text);
+  console.log('📤 Chat ID:', activeChatId);
+  console.log('📤 From:', currentUser.username, 'To:', activeChatPartner);
+
   try {
     // 1. Fetch existing chat data
     const res = await fetch(`${API_BASE}/api/chats`, { credentials: 'include' });
@@ -500,13 +507,19 @@ async function sendChatMessage() {
     const allChats = await res.json();
     const existing = allChats.find(r => r.chat_id === activeChatId);
     
+    console.log('📥 Existing chat found:', existing);
+    
     // 2. Parse existing messages
     let messages = [];
     if (existing && existing.messages) {
       try { 
-        messages = JSON.parse(existing.messages); 
+        const parsed = typeof existing.messages === 'string' 
+          ? JSON.parse(existing.messages) 
+          : existing.messages;
+        messages = Array.isArray(parsed) ? parsed : [];
+        console.log('📥 Existing messages:', messages.length);
       } catch (parseErr) { 
-        console.warn('Failed to parse existing messages:', parseErr);
+        console.warn('⚠️ Failed to parse existing messages:', parseErr);
         messages = []; 
       }
     }
@@ -518,6 +531,8 @@ async function sendChatMessage() {
       time: Date.now() 
     };
     messages.push(newMsg);
+    
+    console.log('📤 Total messages to save:', messages.length);
 
     // 4. Save to server
     const postRes = await fetch(`${API_BASE}/api/chats`, {
@@ -536,7 +551,13 @@ async function sendChatMessage() {
       throw new Error(errorData.error || 'Failed to send message');
     }
     
-    // 5. Update UI immediately
+    const saveResult = await postRes.json();
+    console.log('✅ Server response:', saveResult);
+    
+    // 5. Clear input ONLY after successful save
+    input.value = '';
+    
+    // 6. Update UI immediately
     const area = $('#messagesArea');
     if (area) {
       const el = document.createElement('div');
@@ -546,12 +567,11 @@ async function sendChatMessage() {
       area.scrollTop = area.scrollHeight;
     }
     
-    console.log('✅ Message sent successfully');
+    console.log('✅ Message sent and displayed successfully');
     
   } catch (err) {
     console.error('❌ sendChatMessage error:', err);
     alert('Failed to send message: ' + (err.message || err));
-    input.value = text;
   }
 }
 

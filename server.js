@@ -522,13 +522,23 @@ app.post('/api/chats', async (req, res) => {
   
   const { chat_id, participants, messages } = req.body;
   
+  console.log('📥 Received chat save request:', {
+    chat_id,
+    participants,
+    messageCount: Array.isArray(messages) ? messages.length : 0
+  });
+  
   if (!chat_id) {
     return res.status(400).json({ error: 'Missing required field: chat_id' });
   }
 
+  if (!Array.isArray(messages)) {
+    return res.status(400).json({ error: 'Messages must be an array' });
+  }
+
   try {
-    // Upsert chat row by unique chat_id (don't specify id)
-    await db.query(
+    // Upsert chat row by unique chat_id
+    const [result] = await db.query(
       `INSERT INTO chats (chat_id, participants, messages)
        VALUES (?, ?, ?)
        ON DUPLICATE KEY UPDATE 
@@ -542,13 +552,36 @@ app.post('/api/chats', async (req, res) => {
       ]
     );
     
-    console.log('✅ Chat saved/updated:', chat_id);
+    console.log('✅ Chat saved/updated:', chat_id, 'Messages:', messages.length);
     
-    return res.json({ success: true });
+    // Verify the save by reading it back
+    const [verification] = await db.query(
+      'SELECT * FROM chats WHERE chat_id = ?',
+      [chat_id]
+    );
+    
+    if (verification.length > 0) {
+      const savedChat = verification[0];
+      const savedMessages = JSON.parse(savedChat.messages);
+      console.log('✅ Verification: Chat has', savedMessages.length, 'messages in DB');
+      
+      return res.json({ 
+        success: true, 
+        chat_id: chat_id,
+        messageCount: savedMessages.length
+      });
+    } else {
+      console.error('❌ Verification failed: Chat not found after save');
+      return res.status(500).json({ error: 'Chat save verification failed' });
+    }
     
   } catch (err) {
     console.error('❌ Chat insert/upsert error:', err);
-    return res.status(500).json({ error: 'Database error saving chat' });
+    console.error('❌ Error details:', err.message);
+    return res.status(500).json({ 
+      error: 'Database error saving chat',
+      details: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
   }
 });
 
