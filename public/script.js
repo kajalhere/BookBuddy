@@ -509,20 +509,60 @@ async function loadChatMessages() {
           const el = document.createElement('div');
           el.className = 'bubble ' + ((m.sender === currentUser.username) ? 'me' : 'them');
 
+          // CRITICAL FIX: Ensure every message has a timestamp
+          // If old message doesn't have time, generate one based on index
+          if (!m.time) {
+            m.time = Date.now() - ((messages.length - index) * 1000);
+            console.log('⚠️ Added timestamp to old message:', m.time);
+          }
+
           // Only show delete button for user's own messages
-          // Use message timestamp instead of index for reliable deletion
           const deleteBtn = (m.sender === currentUser.username)
             ? `<button class="delete-msg-btn" data-time="${m.time}">Delete</button>`
             : '';
 
+          console.log(`📝 Message by ${m.sender}: "${m.text.substring(0, 20)}" - Time: ${m.time}`);
+
           el.innerHTML = `
-    <div style="font-size:13px;margin-bottom:6px;color:var(--muted)">${escapeHtml(m.sender)} • ${new Date(m.time || Date.now()).toLocaleString()}</div>
+    <div style="font-size:13px;margin-bottom:6px;color:var(--muted)">${escapeHtml(m.sender)} • ${new Date(m.time).toLocaleString()}</div>
     <div>${escapeHtml(m.text)}</div>
     ${deleteBtn}
   `;
 
           area.appendChild(el);
         });
+
+        // Add click handlers for delete buttons
+        area.querySelectorAll('.delete-msg-btn').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const messageTime = parseInt(e.target.dataset.time);
+            console.log('🗑️ Delete button clicked for message time:', messageTime);
+
+            if (!messageTime || isNaN(messageTime)) {
+              console.error('❌ Invalid message time:', e.target.dataset.time);
+              alert('Cannot delete: Invalid message timestamp');
+              return;
+            }
+
+            deleteMessage(messageTime);
+          });
+        });
+
+        // IMPORTANT: Save updated messages with timestamps back to database
+        if (messages.some(m => m.time)) {
+          console.log('🔄 Saving updated messages with timestamps...');
+          fetch(`${API_BASE}/api/chats`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: activeChatId,
+              participants: [currentUser.username, activeChatPartner],
+              messages: messages
+            })
+          }).catch(err => console.error('Failed to update timestamps:', err));
+        }
 
         // Add click handlers for delete buttons
         area.querySelectorAll('.delete-msg-btn').forEach(btn => {
@@ -656,6 +696,20 @@ async function deleteMessage(messageTime) {
     return;
   }
 
+  console.log('🗑️ Delete request:', {
+    messageTime: messageTime,
+    messageTimeType: typeof messageTime,
+    activeChatId: activeChatId,
+    isValidNumber: !isNaN(messageTime) && messageTime > 0
+  });
+
+  // Validate timestamp
+  if (!messageTime || isNaN(messageTime) || messageTime <= 0) {
+    console.error('❌ Invalid message timestamp:', messageTime);
+    alert('Cannot delete: Invalid message timestamp');
+    return;
+  }
+
   if (!confirm('Are you sure you want to delete this message?')) {
     return;
   }
@@ -664,7 +718,10 @@ async function deleteMessage(messageTime) {
   console.log('🗑️ From chat:', activeChatId);
 
   try {
-    const res = await fetch(`${API_BASE}/api/chats/${activeChatId}/messages/${messageTime}`, {
+    const url = `${API_BASE}/api/chats/${activeChatId}/messages/${messageTime}`;
+    console.log('🗑️ DELETE URL:', url);
+
+    const res = await fetch(url, {
       method: 'DELETE',
       credentials: 'include'
     });
@@ -676,7 +733,7 @@ async function deleteMessage(messageTime) {
       throw new Error(result.error || 'Failed to delete message');
     }
 
-    console.log('✅ Message deleted, reloading chat...');
+    console.log('✅ Message deleted successfully');
 
     // Reload messages to show updated chat
     await loadChatMessages();
