@@ -510,8 +510,9 @@ async function loadChatMessages() {
           el.className = 'bubble ' + ((m.sender === currentUser.username) ? 'me' : 'them');
 
           // Only show delete button for user's own messages
+          // Use message timestamp instead of index for reliable deletion
           const deleteBtn = (m.sender === currentUser.username)
-            ? `<button class="delete-msg-btn" data-index="${index}">Delete</button>`
+            ? `<button class="delete-msg-btn" data-time="${m.time}">Delete</button>`
             : '';
 
           el.innerHTML = `
@@ -519,6 +520,7 @@ async function loadChatMessages() {
     <div>${escapeHtml(m.text)}</div>
     ${deleteBtn}
   `;
+
           area.appendChild(el);
         });
 
@@ -526,8 +528,9 @@ async function loadChatMessages() {
         area.querySelectorAll('.delete-msg-btn').forEach(btn => {
           btn.addEventListener('click', (e) => {
             e.stopPropagation();
-            const index = parseInt(e.target.dataset.index);
-            deleteMessage(index);
+            const messageTime = parseInt(e.target.dataset.time);
+            console.log('🗑️ Delete button clicked for message time:', messageTime);
+            deleteMessage(messageTime);
           });
         });
         area.scrollTop = area.scrollHeight;
@@ -629,8 +632,8 @@ async function sendChatMessage() {
     input.value = '';
     console.log('✅ Input cleared');
 
-// 6. Update UI immediately - reload messages to show with delete button
-await loadChatMessages();
+    // 6. Update UI immediately - reload messages to show with delete button
+    await loadChatMessages();
 
     console.log('✅ Message sent and displayed successfully');
 
@@ -647,7 +650,7 @@ await loadChatMessages();
   }
 }
 
-async function deleteMessage(messageIndex) {
+async function deleteMessage(messageTime) {
   if (!currentUser || !activeChatId) {
     alert('Cannot delete message');
     return;
@@ -657,10 +660,11 @@ async function deleteMessage(messageIndex) {
     return;
   }
 
-  console.log('🗑️ Deleting message at index:', messageIndex);
+  console.log('🗑️ Deleting message with timestamp:', messageTime);
+  console.log('🗑️ From chat:', activeChatId);
 
   try {
-    const res = await fetch(`${API_BASE}/api/chats/${activeChatId}/messages/${messageIndex}`, {
+    const res = await fetch(`${API_BASE}/api/chats/${activeChatId}/messages/${messageTime}`, {
       method: 'DELETE',
       credentials: 'include'
     });
@@ -672,10 +676,12 @@ async function deleteMessage(messageIndex) {
       throw new Error(result.error || 'Failed to delete message');
     }
 
+    console.log('✅ Message deleted, reloading chat...');
+
     // Reload messages to show updated chat
     await loadChatMessages();
 
-    console.log('✅ Message deleted successfully');
+    console.log('✅ Chat reloaded successfully');
 
   } catch (err) {
     console.error('❌ Delete message error:', err);

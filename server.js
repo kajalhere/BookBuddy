@@ -572,13 +572,13 @@ app.post('/api/chats', async (req, res) => {
   }
 });
 
-// Delete a specific message from a chat
-app.delete('/api/chats/:chat_id/messages/:message_index', async (req, res) => {
+// Delete a specific message from a chat (using timestamp)
+app.delete('/api/chats/:chat_id/messages/:message_time', async (req, res) => {
   if (!requireDb(res)) return;
   
-  const { chat_id, message_index } = req.params;
+  const { chat_id, message_time } = req.params;
   
-  console.log('🗑️ Delete message request:', { chat_id, message_index });
+  console.log('🗑️ Delete message request:', { chat_id, message_time });
   
   if (!req.session || !req.session.user) {
     return res.status(401).json({ success: false, error: 'Authentication required' });
@@ -605,10 +605,18 @@ app.delete('/api/chats/:chat_id/messages/:message_index', async (req, res) => {
       return res.status(500).json({ success: false, error: 'Failed to parse messages' });
     }
     
-    const msgIndex = parseInt(message_index);
+    console.log('📥 Total messages before delete:', messages.length);
+    
+    // Find message by timestamp
+    const msgTime = parseInt(message_time);
+    const msgIndex = messages.findIndex(m => m.time === msgTime);
+    
+    console.log('🔍 Looking for message with time:', msgTime);
+    console.log('🔍 Found at index:', msgIndex);
     
     // Check if message exists
-    if (msgIndex < 0 || msgIndex >= messages.length) {
+    if (msgIndex === -1) {
+      console.log('❌ Message not found in chat');
       return res.status(404).json({ success: false, error: 'Message not found' });
     }
     
@@ -621,6 +629,8 @@ app.delete('/api/chats/:chat_id/messages/:message_index', async (req, res) => {
     
     // Remove the message
     messages.splice(msgIndex, 1);
+    
+    console.log('📥 Total messages after delete:', messages.length);
     
     // Update the chat in database
     await db.query(
@@ -639,10 +649,12 @@ app.delete('/api/chats/:chat_id/messages/:message_index', async (req, res) => {
     console.error('❌ Delete message error:', err);
     return res.status(500).json({ 
       success: false,
-      error: 'Database error deleting message'
+      error: 'Database error deleting message',
+      details: err.message
     });
   }
 });
+
 
 // ===============================
 // Frontend Fallback (SPA routing)
