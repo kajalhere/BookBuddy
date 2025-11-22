@@ -241,3 +241,44 @@ footer a{ color:var(--muted); text-decoration:none; padding:6px 10px; border-rad
   color: var(--muted);
   margin: 4px 0;
 }
+
+/* Delete message button */
+.bubble {
+  position: relative;
+  padding-right: 40px; /* Make space for delete button */
+}
+
+.delete-msg-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s, background 0.2s;
+  color: #d9443f;
+  font-weight: 600;
+}
+
+.bubble:hover .delete-msg-btn {
+  opacity: 1;
+}
+
+.delete-msg-btn:hover {
+  background: #d9443f;
+  color: white;
+  border-color: #d9443f;
+}
+
+.bubble.me .delete-msg-btn {
+  background: rgba(0, 0, 0, 0.1);
+  color: white;
+}
+
+.bubble.me .delete-msg-btn:hover {
+  background: rgba(0, 0, 0, 0.3);
+}

@@ -572,6 +572,78 @@ app.post('/api/chats', async (req, res) => {
   }
 });
 
+// Delete a specific message from a chat
+app.delete('/api/chats/:chat_id/messages/:message_index', async (req, res) => {
+  if (!requireDb(res)) return;
+  
+  const { chat_id, message_index } = req.params;
+  
+  console.log('🗑️ Delete message request:', { chat_id, message_index });
+  
+  if (!req.session || !req.session.user) {
+    return res.status(401).json({ success: false, error: 'Authentication required' });
+  }
+  
+  try {
+    // Fetch the chat
+    const [chats] = await db.query('SELECT * FROM chats WHERE chat_id = ?', [chat_id]);
+    
+    if (chats.length === 0) {
+      return res.status(404).json({ success: false, error: 'Chat not found' });
+    }
+    
+    const chat = chats[0];
+    
+    // Parse messages
+    let messages = [];
+    try {
+      const parsed = typeof chat.messages === 'string' 
+        ? JSON.parse(chat.messages) 
+        : chat.messages;
+      messages = Array.isArray(parsed) ? parsed : [];
+    } catch (err) {
+      return res.status(500).json({ success: false, error: 'Failed to parse messages' });
+    }
+    
+    const msgIndex = parseInt(message_index);
+    
+    // Check if message exists
+    if (msgIndex < 0 || msgIndex >= messages.length) {
+      return res.status(404).json({ success: false, error: 'Message not found' });
+    }
+    
+    const message = messages[msgIndex];
+    
+    // Check if user is the sender of the message
+    if (message.sender !== req.session.user.username) {
+      return res.status(403).json({ success: false, error: 'You can only delete your own messages' });
+    }
+    
+    // Remove the message
+    messages.splice(msgIndex, 1);
+    
+    // Update the chat in database
+    await db.query(
+      `UPDATE chats SET messages = ?, last_updated = CURRENT_TIMESTAMP WHERE chat_id = ?`,
+      [JSON.stringify(messages), chat_id]
+    );
+    
+    console.log('✅ Message deleted from chat:', chat_id);
+    
+    return res.status(200).json({ 
+      success: true, 
+      messageCount: messages.length
+    });
+    
+  } catch (err) {
+    console.error('❌ Delete message error:', err);
+    return res.status(500).json({ 
+      success: false,
+      error: 'Database error deleting message'
+    });
+  }
+});
+
 // ===============================
 // Frontend Fallback (SPA routing)
 // ===============================

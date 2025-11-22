@@ -351,48 +351,48 @@ function openChatForBook(bookId, sellerUsername) {
 }
 
 async function openGlobalChats() {
-  if (!currentUser) { 
-    openAuth(); 
-    return; 
+  if (!currentUser) {
+    openAuth();
+    return;
   }
-  
+
   try {
     const res = await fetch(`${API_BASE}/api/chats`, { credentials: 'include' });
     if (!res.ok) throw new Error('Failed to fetch chats');
     const allChats = await res.json();
-    
+
     console.log('📥 All chats fetched:', allChats.length);
-    
+
     // Filter chats for current user and remove duplicates
     const userChatsMap = new Map();
-    
+
     allChats.forEach(chat => {
       try {
-        const participants = typeof chat.participants === 'string' 
-          ? JSON.parse(chat.participants) 
+        const participants = typeof chat.participants === 'string'
+          ? JSON.parse(chat.participants)
           : chat.participants;
-        
+
         if (!Array.isArray(participants) || !participants.includes(currentUser.username)) {
           return;
         }
-        
+
         // Get the other user
         const otherUser = participants.find(p => p !== currentUser.username);
         if (!otherUser) return;
-        
+
         // Parse messages
         let messages = [];
-        try { 
-          const parsed = typeof chat.messages === 'string' 
-            ? JSON.parse(chat.messages) 
+        try {
+          const parsed = typeof chat.messages === 'string'
+            ? JSON.parse(chat.messages)
             : chat.messages;
           messages = Array.isArray(parsed) ? parsed : [];
         } catch (err) {
           console.warn('Failed to parse messages for chat:', chat.chat_id, err);
         }
-        
+
         console.log(`📥 Chat with ${otherUser}: ${messages.length} messages`);
-        
+
         // Only keep the chat with the most messages (latest version)
         const existing = userChatsMap.get(otherUser);
         if (!existing || messages.length > existing.messageCount) {
@@ -408,57 +408,57 @@ async function openGlobalChats() {
         console.warn('Error processing chat:', err);
       }
     });
-    
+
     const userChats = Array.from(userChatsMap.values());
     console.log('📊 Unique chats:', userChats.length);
-    
+
     const area = $('#messagesArea');
     const title = $('#chatTitle');
-    
+
     if (!area || !title) return;
-    
+
     title.textContent = 'Your Chats';
     area.innerHTML = '';
-    
+
     if (userChats.length === 0) {
       area.innerHTML = '<div style="color:var(--muted);padding:12px;text-align:center">No chats yet. Click "Chat" on any book to start a conversation!</div>';
     } else {
       userChats.forEach(chat => {
         const lastMsg = chat.lastMessage;
-        const preview = lastMsg && lastMsg.text 
+        const preview = lastMsg && lastMsg.text
           ? (lastMsg.text.substring(0, 50) + (lastMsg.text.length > 50 ? '...' : ''))
           : 'Start the conversation';
-        
+
         const chatItem = document.createElement('div');
         chatItem.style.cssText = 'padding:12px;margin:8px 0;background:#f9f9f9;border-radius:8px;cursor:pointer;border:1px solid #eee;transition:background 0.2s';
         chatItem.innerHTML = `
           <div style="font-weight:600;margin-bottom:4px">${escapeHtml(chat.otherUser)}</div>
           <div style="font-size:13px;color:var(--muted)">${escapeHtml(preview)}</div>
         `;
-        
+
         chatItem.addEventListener('mouseenter', () => {
           chatItem.style.background = '#f0f0f0';
         });
-        
+
         chatItem.addEventListener('mouseleave', () => {
           chatItem.style.background = '#f9f9f9';
         });
-        
+
         chatItem.addEventListener('click', () => {
           openChatForBook(null, chat.otherUser);
         });
-        
+
         area.appendChild(chatItem);
       });
     }
-    
+
     $('#chatModal')?.classList.add('open');
-    
+
     if (chatPollInterval) {
       clearInterval(chatPollInterval);
       chatPollInterval = null;
     }
-    
+
   } catch (err) {
     console.error('❌ openGlobalChats error:', err);
     alert('Failed to load chats');
@@ -505,11 +505,30 @@ async function loadChatMessages() {
         area.innerHTML = '<div style="color:var(--muted);padding:12px">No messages yet – start the conversation!</div>';
       } else {
         console.log('🟢 Displaying', messages.length, 'messages');
-        messages.forEach(m => {
+        messages.forEach((m, index) => {
           const el = document.createElement('div');
           el.className = 'bubble ' + ((m.sender === currentUser.username) ? 'me' : 'them');
-          el.innerHTML = `<div style="font-size:13px;margin-bottom:6px;color:var(--muted)">${escapeHtml(m.sender)} • ${new Date(m.time || Date.now()).toLocaleString()}</div><div>${escapeHtml(m.text)}</div>`;
+
+          // Only show delete button for user's own messages
+          const deleteBtn = (m.sender === currentUser.username)
+            ? `<button class="delete-msg-btn" data-index="${index}">Delete</button>`
+            : '';
+
+          el.innerHTML = `
+    <div style="font-size:13px;margin-bottom:6px;color:var(--muted)">${escapeHtml(m.sender)} • ${new Date(m.time || Date.now()).toLocaleString()}</div>
+    <div>${escapeHtml(m.text)}</div>
+    ${deleteBtn}
+  `;
           area.appendChild(el);
+        });
+
+        // Add click handlers for delete buttons
+        area.querySelectorAll('.delete-msg-btn').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const index = parseInt(e.target.dataset.index);
+            deleteMessage(index);
+          });
         });
         area.scrollTop = area.scrollHeight;
       }
@@ -526,16 +545,16 @@ async function loadChatMessages() {
 async function sendChatMessage() {
   const input = $('#chatInput');
   if (!input) return;
-  
+
   const text = input.value.trim();
   if (!text) return;
-  
-  if (!currentUser) { 
+
+  if (!currentUser) {
     alert('Please log in to send messages');
-    openAuth(); 
-    return; 
+    openAuth();
+    return;
   }
-  
+
   if (!activeChatId || !activeChatPartner) {
     alert('No active chat');
     return;
@@ -555,35 +574,35 @@ async function sendChatMessage() {
     // 1. Fetch existing chat data
     const res = await fetch(`${API_BASE}/api/chats`, { credentials: 'include' });
     if (!res.ok) throw new Error('Failed to fetch chats');
-    
+
     const allChats = await res.json();
     const existing = allChats.find(r => r.chat_id === activeChatId);
-    
+
     console.log('📥 Existing chat found:', existing);
-    
+
     // 2. Parse existing messages
     let messages = [];
     if (existing && existing.messages) {
-      try { 
-        const parsed = typeof existing.messages === 'string' 
-          ? JSON.parse(existing.messages) 
+      try {
+        const parsed = typeof existing.messages === 'string'
+          ? JSON.parse(existing.messages)
           : existing.messages;
         messages = Array.isArray(parsed) ? parsed : [];
         console.log('📥 Existing messages:', messages.length);
-      } catch (parseErr) { 
+      } catch (parseErr) {
         console.warn('⚠️ Failed to parse existing messages:', parseErr);
-        messages = []; 
+        messages = [];
       }
     }
-    
+
     // 3. Add new message
-    const newMsg = { 
-      sender: currentUser.username, 
-      text: originalText, 
-      time: Date.now() 
+    const newMsg = {
+      sender: currentUser.username,
+      text: originalText,
+      time: Date.now()
     };
     messages.push(newMsg);
-    
+
     console.log('📤 Total messages to save:', messages.length);
 
     // 4. Save to server
@@ -597,31 +616,24 @@ async function sendChatMessage() {
         messages: messages
       })
     });
-    
+
     const saveResult = await postRes.json();
     console.log('✅ Server response:', saveResult);
-    
+
     // Check if the response indicates success
     if (!saveResult.success) {
       throw new Error(saveResult.error || 'Failed to send message');
     }
-    
+
     // 5. Clear input ONLY after successful save
     input.value = '';
     console.log('✅ Input cleared');
-    
-    // 6. Update UI immediately
-    const area = $('#messagesArea');
-    if (area) {
-      const el = document.createElement('div');
-      el.className = 'bubble me';
-      el.innerHTML = `<div style="font-size:13px;margin-bottom:6px;color:var(--muted)">${escapeHtml(currentUser.username)} • ${new Date().toLocaleString()}</div><div>${escapeHtml(originalText)}</div>`;
-      area.appendChild(el);
-      area.scrollTop = area.scrollHeight;
-    }
-    
+
+// 6. Update UI immediately - reload messages to show with delete button
+await loadChatMessages();
+
     console.log('✅ Message sent and displayed successfully');
-    
+
   } catch (err) {
     console.error('❌ sendChatMessage error:', err);
     alert('Failed to send message: ' + (err.message || err));
@@ -632,6 +644,42 @@ async function sendChatMessage() {
     input.disabled = false;
     if (sendBtn) sendBtn.disabled = false;
     input.focus();
+  }
+}
+
+async function deleteMessage(messageIndex) {
+  if (!currentUser || !activeChatId) {
+    alert('Cannot delete message');
+    return;
+  }
+
+  if (!confirm('Are you sure you want to delete this message?')) {
+    return;
+  }
+
+  console.log('🗑️ Deleting message at index:', messageIndex);
+
+  try {
+    const res = await fetch(`${API_BASE}/api/chats/${activeChatId}/messages/${messageIndex}`, {
+      method: 'DELETE',
+      credentials: 'include'
+    });
+
+    const result = await res.json();
+    console.log('🗑️ Delete response:', result);
+
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to delete message');
+    }
+
+    // Reload messages to show updated chat
+    await loadChatMessages();
+
+    console.log('✅ Message deleted successfully');
+
+  } catch (err) {
+    console.error('❌ Delete message error:', err);
+    alert('Failed to delete message: ' + (err.message || err));
   }
 }
 
@@ -655,11 +703,11 @@ function attachUIHandlers() {
 
   $('#sendChatBtn')?.addEventListener('click', sendChatMessage);
   $('#chatInput')?.addEventListener('keypress', (e) => {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    sendChatMessage();
-  }
-});
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendChatMessage();
+    }
+  });
   $('#closeChat')?.addEventListener('click', closeChatPopup);
   $('#openChats')?.addEventListener('click', openGlobalChats);
 
