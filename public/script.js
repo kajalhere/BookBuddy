@@ -810,6 +810,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     await fetchCurrentUser();
     await Promise.all([fetchBooks(), fetchDonations()]);
     updateAuthState();
+    
+    // ONE-TIME: Migrate old messages to add timestamps
+    console.log('🔄 Checking if timestamp migration is needed...');
+    try {
+      const migrateRes = await fetch(`${API_BASE}/api/migrate-timestamps`, {
+        method: 'POST',
+        credentials: 'include'
+      });
+      const migrateResult = await migrateRes.json();
+      if (migrateResult.success) {
+        console.log('✅ Timestamp migration complete:', migrateResult);
+      }
+    } catch (migrateErr) {
+      console.warn('⚠️ Migration skipped:', migrateErr);
+    }
+    
     console.log('✅ Frontend initialized');
   } catch (err) {
     console.error('Initialization error', err);

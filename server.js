@@ -663,6 +663,79 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// ONE-TIME MIGRATION: Add timestamps to old messages
+app.post('/api/migrate-timestamps', async (req, res) => {
+  if (!requireDb(res)) return;
+  
+  console.log('🔄 Starting timestamp migration...');
+  
+  try {
+    // Fetch all chats
+    const [chats] = await db.query('SELECT * FROM chats');
+    
+    let updatedCount = 0;
+    let skippedCount = 0;
+    
+    for (const chat of chats) {
+      let messages = [];
+      
+      try {
+        const parsed = typeof chat.messages === 'string' 
+          ? JSON.parse(chat.messages) 
+          : chat.messages;
+        messages = Array.isArray(parsed) ? parsed : [];
+      } catch (err) {
+        console.warn('Failed to parse messages for chat:', chat.chat_id);
+        continue;
+      }
+      
+      // Check if any message is missing timestamp
+      const needsUpdate = messages.some(m => !m.time);
+      
+      if (!needsUpdate) {
+        skippedCount++;
+        continue;
+      }
+      
+      // Add timestamps to messages that don't have them
+      const baseTime = Date.now() - (messages.length * 60000); // 1 minute apart
+      messages.forEach((m, index) => {
+        if (!m.time) {
+          m.time = baseTime + (index * 60000);
+          console.log(`✅ Added timestamp ${m.time} to message: "${m.text.substring(0, 30)}"`);
+        }
+      });
+      
+      // Update chat in database
+      await db.query(
+        'UPDATE chats SET messages = ? WHERE chat_id = ?',
+        [JSON.stringify(messages), chat.chat_id]
+      );
+      
+      updatedCount++;
+      console.log(`✅ Updated chat ${chat.chat_id} with ${messages.length} messages`);
+    }
+    
+    console.log('✅ Migration complete!');
+    console.log(`   Updated: ${updatedCount} chats`);
+    console.log(`   Skipped: ${skippedCount} chats (already had timestamps)`);
+    
+    return res.json({ 
+      success: true, 
+      updated: updatedCount,
+      skipped: skippedCount,
+      total: chats.length
+    });
+    
+  } catch (err) {
+    console.error('❌ Migration failed:', err);
+    return res.status(500).json({ 
+      success: false, 
+      error: err.message 
+    });
+  }
+});
+
 // ===============================
 // Start Server
 // ===============================
