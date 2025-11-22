@@ -529,11 +529,11 @@ app.post('/api/chats', async (req, res) => {
   });
   
   if (!chat_id) {
-    return res.status(400).json({ error: 'Missing required field: chat_id' });
+    return res.status(400).json({ success: false, error: 'Missing required field: chat_id' });
   }
 
   if (!Array.isArray(messages)) {
-    return res.status(400).json({ error: 'Messages must be an array' });
+    return res.status(400).json({ success: false, error: 'Messages must be an array' });
   }
 
   try {
@@ -554,31 +554,18 @@ app.post('/api/chats', async (req, res) => {
     
     console.log('✅ Chat saved/updated:', chat_id, 'Messages:', messages.length);
     
-    // Verify the save by reading it back
-    const [verification] = await db.query(
-      'SELECT * FROM chats WHERE chat_id = ?',
-      [chat_id]
-    );
-    
-    if (verification.length > 0) {
-      const savedChat = verification[0];
-      const savedMessages = JSON.parse(savedChat.messages);
-      console.log('✅ Verification: Chat has', savedMessages.length, 'messages in DB');
-      
-      return res.json({ 
-        success: true, 
-        chat_id: chat_id,
-        messageCount: savedMessages.length
-      });
-    } else {
-      console.error('❌ Verification failed: Chat not found after save');
-      return res.status(500).json({ error: 'Chat save verification failed' });
-    }
+    // Return success immediately - don't wait for verification
+    return res.status(200).json({ 
+      success: true, 
+      chat_id: chat_id,
+      messageCount: messages.length
+    });
     
   } catch (err) {
     console.error('❌ Chat insert/upsert error:', err);
     console.error('❌ Error details:', err.message);
     return res.status(500).json({ 
+      success: false,
       error: 'Database error saving chat',
       details: process.env.NODE_ENV === 'development' ? err.message : undefined
     });

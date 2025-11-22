@@ -361,13 +361,20 @@ async function openGlobalChats() {
     if (!res.ok) throw new Error('Failed to fetch chats');
     const allChats = await res.json();
     
+    console.log('📥 All chats fetched:', allChats.length);
+    
     // Filter chats for current user and remove duplicates
     const userChatsMap = new Map();
     
     allChats.forEach(chat => {
       try {
-        const participants = JSON.parse(chat.participants || '[]');
-        if (!participants.includes(currentUser.username)) return;
+        const participants = typeof chat.participants === 'string' 
+          ? JSON.parse(chat.participants) 
+          : chat.participants;
+        
+        if (!Array.isArray(participants) || !participants.includes(currentUser.username)) {
+          return;
+        }
         
         // Get the other user
         const otherUser = participants.find(p => p !== currentUser.username);
@@ -376,11 +383,19 @@ async function openGlobalChats() {
         // Parse messages
         let messages = [];
         try { 
-          messages = JSON.parse(chat.messages || '[]'); 
-        } catch {}
+          const parsed = typeof chat.messages === 'string' 
+            ? JSON.parse(chat.messages) 
+            : chat.messages;
+          messages = Array.isArray(parsed) ? parsed : [];
+        } catch (err) {
+          console.warn('Failed to parse messages for chat:', chat.chat_id, err);
+        }
+        
+        console.log(`📥 Chat with ${otherUser}: ${messages.length} messages`);
         
         // Only keep the chat with the most messages (latest version)
-        if (!userChatsMap.has(otherUser) || messages.length > userChatsMap.get(otherUser).messageCount) {
+        const existing = userChatsMap.get(otherUser);
+        if (!existing || messages.length > existing.messageCount) {
           userChatsMap.set(otherUser, {
             chat_id: chat.chat_id,
             otherUser: otherUser,
@@ -395,6 +410,7 @@ async function openGlobalChats() {
     });
     
     const userChats = Array.from(userChatsMap.values());
+    console.log('📊 Unique chats:', userChats.length);
     
     const area = $('#messagesArea');
     const title = $('#chatTitle');
@@ -409,7 +425,9 @@ async function openGlobalChats() {
     } else {
       userChats.forEach(chat => {
         const lastMsg = chat.lastMessage;
-        const preview = lastMsg ? lastMsg.text.substring(0, 50) + (lastMsg.text.length > 50 ? '...' : '') : 'No messages';
+        const preview = lastMsg && lastMsg.text 
+          ? (lastMsg.text.substring(0, 50) + (lastMsg.text.length > 50 ? '...' : ''))
+          : 'Start the conversation';
         
         const chatItem = document.createElement('div');
         chatItem.style.cssText = 'padding:12px;margin:8px 0;background:#f9f9f9;border-radius:8px;cursor:pointer;border:1px solid #eee;transition:background 0.2s';
@@ -442,7 +460,7 @@ async function openGlobalChats() {
     }
     
   } catch (err) {
-    console.error('openGlobalChats error', err);
+    console.error('❌ openGlobalChats error:', err);
     alert('Failed to load chats');
   }
 }
@@ -508,16 +526,16 @@ async function loadChatMessages() {
 async function sendChatMessage() {
   const input = $('#chatInput');
   if (!input) return;
-
+  
   const text = input.value.trim();
   if (!text) return;
-
-  if (!currentUser) {
+  
+  if (!currentUser) { 
     alert('Please log in to send messages');
-    openAuth();
-    return;
+    openAuth(); 
+    return; 
   }
-
+  
   if (!activeChatId || !activeChatPartner) {
     alert('No active chat');
     return;
@@ -528,6 +546,7 @@ async function sendChatMessage() {
   console.log('📤 From:', currentUser.username, 'To:', activeChatPartner);
 
   // Disable input and button while sending
+  const originalText = text;
   input.disabled = true;
   const sendBtn = $('#sendChatBtn');
   if (sendBtn) sendBtn.disabled = true;
@@ -536,35 +555,35 @@ async function sendChatMessage() {
     // 1. Fetch existing chat data
     const res = await fetch(`${API_BASE}/api/chats`, { credentials: 'include' });
     if (!res.ok) throw new Error('Failed to fetch chats');
-
+    
     const allChats = await res.json();
     const existing = allChats.find(r => r.chat_id === activeChatId);
-
+    
     console.log('📥 Existing chat found:', existing);
-
+    
     // 2. Parse existing messages
     let messages = [];
     if (existing && existing.messages) {
-      try {
-        const parsed = typeof existing.messages === 'string'
-          ? JSON.parse(existing.messages)
+      try { 
+        const parsed = typeof existing.messages === 'string' 
+          ? JSON.parse(existing.messages) 
           : existing.messages;
         messages = Array.isArray(parsed) ? parsed : [];
         console.log('📥 Existing messages:', messages.length);
-      } catch (parseErr) {
+      } catch (parseErr) { 
         console.warn('⚠️ Failed to parse existing messages:', parseErr);
-        messages = [];
+        messages = []; 
       }
     }
-
+    
     // 3. Add new message
-    const newMsg = {
-      sender: currentUser.username,
-      text: text,
-      time: Date.now()
+    const newMsg = { 
+      sender: currentUser.username, 
+      text: originalText, 
+      time: Date.now() 
     };
     messages.push(newMsg);
-
+    
     console.log('📤 Total messages to save:', messages.length);
 
     // 4. Save to server
@@ -578,32 +597,36 @@ async function sendChatMessage() {
         messages: messages
       })
     });
-
+    
     const saveResult = await postRes.json();
     console.log('✅ Server response:', saveResult);
-
-    if (!postRes.ok || !saveResult.success) {
+    
+    // Check if the response indicates success
+    if (!saveResult.success) {
       throw new Error(saveResult.error || 'Failed to send message');
     }
-
+    
     // 5. Clear input ONLY after successful save
     input.value = '';
-
+    console.log('✅ Input cleared');
+    
     // 6. Update UI immediately
     const area = $('#messagesArea');
     if (area) {
       const el = document.createElement('div');
       el.className = 'bubble me';
-      el.innerHTML = `<div style="font-size:13px;margin-bottom:6px;color:var(--muted)">${escapeHtml(currentUser.username)} • ${new Date().toLocaleString()}</div><div>${escapeHtml(text)}</div>`;
+      el.innerHTML = `<div style="font-size:13px;margin-bottom:6px;color:var(--muted)">${escapeHtml(currentUser.username)} • ${new Date().toLocaleString()}</div><div>${escapeHtml(originalText)}</div>`;
       area.appendChild(el);
       area.scrollTop = area.scrollHeight;
     }
-
+    
     console.log('✅ Message sent and displayed successfully');
-
+    
   } catch (err) {
     console.error('❌ sendChatMessage error:', err);
     alert('Failed to send message: ' + (err.message || err));
+    // Restore the message in input on error
+    input.value = originalText;
   } finally {
     // Re-enable input and button
     input.disabled = false;
